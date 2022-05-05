@@ -1,15 +1,20 @@
 {
-	"name": "obsidian-sample-plugin",
+	"name": "obsidian-user-plugins",
 	"version": "1.0.1",
-	"description": "This is a sample plugin for Obsidian (https://obsidian.md)",
+	"description": "Use js files or snippets to code your own quick and dirty plugins",
 	"main": "main.js",
 	"scripts": {
 		"dev": "node esbuild.config.mjs",
 		"build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
 		"version": "node version-bump.mjs && git add manifest.json versions.json"
 	},
-	"keywords": [],
-	"author": "",
+	"keywords": [
+		"obsidian",
+		"obsidian-md",
+		"obsidian-plugin",
+		"obsidian-md-plugin"
+	],
+	"author": "mnowotnik",
 	"license": "MIT",
 	"devDependencies": {
 		"@types/node": "^16.11.6",
@@ -17,8 +22,11 @@
 		"@typescript-eslint/parser": "^5.2.0",
 		"builtin-modules": "^3.2.0",
 		"esbuild": "0.13.12",
-		"obsidian": "latest",
+		"obsidian": "^0.13.26",
 		"tslib": "2.3.1",
 		"typescript": "4.4.4"
+	},
+	"dependencies": {
+		"@popperjs/core": "^2.11.2"
 	}
 }
