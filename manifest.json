@@ -5,5 +5,6 @@
 	"description": "Use js files or snippets to code your own quick and dirty plugins",
 	"author": "mnowotnik",
 	"authorUrl": "https://mnowotnik.com",
-	"isDesktopOnly": false
+	"isDesktopOnly": false,
+	"version": "1.0.2"
 }
