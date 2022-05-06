@@ -9,10 +9,7 @@ export default class UserPlugins extends Plugin {
     onunloadHandlers: Array<[string, (plugin: Plugin) => Promise<void>]> = [];
     helpers: Helpers;
 
-    async onload() {
-        await this.loadSettings();
-        this.helpers = new Helpers(this.app);
-
+    async runSnippets() {
         let count = 0;
         for (const script of this.settings.snippets) {
             try {
@@ -23,46 +20,54 @@ export default class UserPlugins extends Plugin {
             }
             count++;
         }
+    }
+
+    async runScripts() {
+        // can't find a way to use dynamic imports
+        const req = window.require;
+        for (const path of this.settings.enabledScripts) {
+            if (!path && path === "") {
+                continue;
+            }
+            const file = resolve_tfile(this.app, path);
+            if (file.extension !== "js") {
+                continue;
+            }
+            const scriptPath = this.resolveFilePath(file);
+            if (scriptPath == null) {
+                console.error(`Cannot execute script: ${file.path}`);
+                continue;
+            }
+
+            let userModule: {
+                onload: (plugin: Plugin) => Promise<void>;
+                onunload?: (plugin: Plugin) => Promise<void>;
+            };
+            try {
+                userModule = req(scriptPath);
+                await userModule.onload(this);
+            } catch (e) {
+                Error.captureStackTrace(e);
+                this.logScriptError(`${file.path}.onload}`, e.message, e.stack);
+            }
+            if ("onunload" in userModule) {
+                this.onunloadHandlers.push([
+                    file.path,
+                    (plugin) => userModule.onunload(plugin),
+                ]);
+            }
+        }
+    }
+
+    async onload() {
+        await this.loadSettings();
+        this.helpers = new Helpers(this.app);
+
         // wait for vault files to load
         // FIXME maybe there's a better hook
         this.app.workspace.onLayoutReady(async () => {
-            const req = window.require;
-            for (const path of this.settings.enabledScripts) {
-                if (!path && path === "") {
-                    continue;
-                }
-                const file = resolve_tfile(this.app, path);
-                if (file.extension !== "js") {
-                    continue;
-                }
-                const scriptPath = this.resolveFilePath(file);
-                if (scriptPath == null) {
-                    console.error(`Cannot execute script: ${file.path}`);
-                    continue;
-                }
-
-                let func: {
-                    onload: (plugin: Plugin) => Promise<void>;
-                    onunload?: (plugin: Plugin) => Promise<void>;
-                };
-                try {
-                    func = req(scriptPath);
-                    await func.onload(this);
-                } catch (e) {
-                    Error.captureStackTrace(e);
-                    this.logScriptError(
-                        `${file.path}.onload}`,
-                        e.message,
-                        e.stack
-                    );
-                }
-                if ("onunload" in func) {
-                    this.onunloadHandlers.push([
-                        file.path,
-                        (plugin) => func.onunload(plugin),
-                    ]);
-                }
-            }
+            await this.runScripts()
+            await this.runSnippets()
         });
 
         this.addSettingTab(new SettingTab(this.app, this));

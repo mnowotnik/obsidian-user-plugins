@@ -84,7 +84,6 @@ export class SettingTab extends PluginSettingTab {
         const enabledReduction = [...enabled];
         for (const file of files) {
             if (file.extension === "js") {
-                console.log(file.basename);
                 new Setting(this.containerEl)
                     .setName(file.name)
                     .setDesc("Enable this script")
