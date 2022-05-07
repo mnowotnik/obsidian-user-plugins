@@ -3,10 +3,12 @@ import * as path from "path";
 import { Helpers } from "./helpers/Helpers";
 import { DEFAULT_SETTINGS, Settings, SettingTab } from "./settings/Settings";
 import { resolve_tfile } from "./settings/utils/Utils";
+import * as obsidian from "obsidian";
 
 export default class UserPlugins extends Plugin {
     settings: Settings;
     onunloadHandlers: Array<[string, (plugin: Plugin) => Promise<void>]> = [];
+    passedModules: Record<string, object>;
     helpers: Helpers;
 
     async runSnippets() {
@@ -24,7 +26,6 @@ export default class UserPlugins extends Plugin {
 
     async runScripts() {
         // can't find a way to use dynamic imports
-        const req = window.require;
         for (const path of this.settings.enabledScripts) {
             if (!path && path === "") {
                 continue;
@@ -61,13 +62,17 @@ export default class UserPlugins extends Plugin {
 
     async onload() {
         await this.loadSettings();
+        const req = window.require;
+        this.passedModules = {
+            obsidian: obsidian,
+        };
         this.helpers = new Helpers(this.app);
 
         // wait for vault files to load
         // FIXME maybe there's a better hook
         this.app.workspace.onLayoutReady(async () => {
-            await this.runScripts()
-            await this.runSnippets()
+            await this.runScripts();
+            await this.runSnippets();
         });
 
         this.addSettingTab(new SettingTab(this.app, this));
