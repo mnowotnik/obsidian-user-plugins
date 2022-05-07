@@ -26,6 +26,7 @@ export default class UserPlugins extends Plugin {
 
     async runScripts() {
         // can't find a way to use dynamic imports
+        const req = window.require
         for (const path of this.settings.enabledScripts) {
             if (!path && path === "") {
                 continue;
@@ -62,7 +63,6 @@ export default class UserPlugins extends Plugin {
 
     async onload() {
         await this.loadSettings();
-        const req = window.require;
         this.passedModules = {
             obsidian: obsidian,
         };
