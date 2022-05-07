@@ -62,6 +62,8 @@ npm run build
 Scripts can be added either by manually adding snippets or enabling each individual file in
 a scripts directory in a vault. Scripts have access to a `Plugin` object. Its API is declared [here](https://github.com/obsidianmd/obsidian-api/blob/master/obsidian.d.ts).
 
+Currently, you need to reload application (`Reload app without saving` command) for the scripts and snippets to take effect. This will be changed in future versions.
+
 #### Snippet
 
 A snippet is just a javascript block of code that has access to a `plugin` variable.
@@ -83,6 +85,10 @@ A script file follows CommonJS module specification and exports at least `onload
 takes a single argument `plugin` as an input. You must specify `onload` function in th exported
 module and you can also specify `onunload` if needed.
 
+To use scripts specify scripts folder in settings, hit the reload button to search for scripts in the specified path
+and then enable each found script using a toggle button.
+
+Example:
 ```javascript
 module.exports = {}
 module.exports.onload = function(plugin) {
