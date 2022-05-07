@@ -1,6 +1,6 @@
 {
 	"name": "obsidian-user-plugins",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"description": "Use js files or snippets to code your own quick and dirty plugins",
 	"main": "main.js",
 	"scripts": {
