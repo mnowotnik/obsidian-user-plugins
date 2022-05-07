@@ -23,25 +23,32 @@ a folder before creating a note.
 module.exports = {}
 
 module.exports.onload = async (plugin) => {
+  const MarkdownView = plugin.passedModules.obsidian.MarkdownView
   plugin.addCommand({
     id: 'new-note-in-folder',
-    name: 'Create new note in given folder',
+    name: 'Create new note in a folder',
     callback: async () => {
       const folders = plugin.app.vault.getAllLoadedFiles().filter(i => i.children).map(folder => folder.path);
       const folder = await plugin.helpers.suggest(folders, folders);
       const created_note = await plugin.app.vault.create(folder + "/Untitled.md", "")
       const active_leaf = plugin.app.workspace.activeLeaf;
-      plugin.app.workspace.trigger("create",created_note)
       if (!active_leaf) {
         return;
       }
       await active_leaf.openFile(created_note, {
         state: { mode: "source" },
       });
+      plugin.app.workspace.trigger("create",created_note)
+      const view = app.workspace.getActiveViewOfType(MarkdownView);
+      if (view) {
+        const editor = view.editor;
+        editor.focus()
+      }
     }
   });
 }
 ```
+
 ![Command in palette](https://user-images.githubusercontent.com/8244123/167032593-0dbe59b1-2c2a-4700-83f4-01609cf0d30a.png)
 
 ## Quick start
@@ -61,6 +68,25 @@ npm run build
 
 Scripts can be added either by manually adding snippets or enabling each individual file in
 a scripts directory in a vault. Scripts have access to a `Plugin` object. Its API is declared [here](https://github.com/obsidianmd/obsidian-api/blob/master/obsidian.d.ts).
+`plugin` has two additional members:
+
+- `helpers`
+
+    Currently it has a single method that opens a suggester modal:
+
+    ```javascript
+    suggest<T>(
+        textItems: string[] | ((item: T) => string),
+        items: T[],
+        placeholder?: string,
+        limit?: number
+    )
+    ```
+
+- `passedModules`
+
+    Currently only gives access to the `obsidian` module
+  
 
 Currently, you need to reload application (`Reload app without saving` command) for the scripts and snippets to take effect. This will be changed in future versions.
 
