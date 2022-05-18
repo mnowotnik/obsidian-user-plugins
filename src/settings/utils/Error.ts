@@ -1,1 +1,1 @@
-export class UserPluginInternalError extends Error {}
+export class UserPluginError extends Error {}
