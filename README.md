@@ -86,9 +86,6 @@ a scripts directory in a vault. Scripts have access to a `Plugin` object. Its AP
 - `passedModules`
 
     Currently only gives access to the `obsidian` module
-  
-
-Currently, you need to reload application (`Reload app without saving` command) for the scripts and snippets to take effect. This will be changed in future versions.
 
 #### Snippet
 
