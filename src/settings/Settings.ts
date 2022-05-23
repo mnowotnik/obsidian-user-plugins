@@ -81,7 +81,7 @@ export class SettingTab extends PluginSettingTab {
     addUserScriptEntries(files: Array<TFile>): number {
         let added = 0;
         const enabled = this.plugin.settings.enabledScripts;
-        const enabledReduction = [...enabled];
+        const absentFilesToRemove = [...enabled];
         for (const file of files) {
             if (file.extension === "js") {
                 new Setting(this.containerEl)
@@ -98,17 +98,22 @@ export class SettingTab extends PluginSettingTab {
                                 }
                                 this.plugin.saveSettings();
                                 this.display();
+                                if (newValue) {
+                                    this.plugin.runScript(file.path);
+                                } else {
+                                    this.plugin.runOnunload(file.path);
+                                }
                             }
                         );
                     });
                 added++;
             }
             if (enabled.includes(file.path)) {
-                enabledReduction.remove(file.path);
+                absentFilesToRemove.remove(file.path);
             }
         }
-        if (enabledReduction.length > 0) {
-            for (const file of enabledReduction) {
+        if (absentFilesToRemove.length > 0) {
+            for (const file of absentFilesToRemove) {
                 enabled.remove(file);
             }
             this.plugin.saveSettings();
@@ -125,17 +130,11 @@ export class SettingTab extends PluginSettingTab {
             const setting = new Setting(this.containerEl)
                 .addExtraButton((extra) => {
                     extra
-                        .setIcon("cross")
-                        .setTooltip("Delete")
+                        .setIcon("right-arrow")
+                        .setTooltip("Run snippet")
                         .onClick(() => {
                             const script = scripts[idx];
-                            const index =
-                                this.plugin.settings.snippets.indexOf(script);
-                            if (index > -1) {
-                                this.plugin.settings.snippets.splice(index, 1);
-                                this.plugin.saveSettings();
-                                this.display();
-                            }
+                            this.plugin.runSnippet(script, idx);
                         });
                 })
                 .addTextArea((text) => {
@@ -156,8 +155,22 @@ export class SettingTab extends PluginSettingTab {
                     t.inputEl.setAttr("rows", 5);
                     t.inputEl.addClass("obsidian_user_plugins_snippet");
                     return t;
+                })
+                .addExtraButton((extra) => {
+                    extra
+                        .setIcon("cross")
+                        .setTooltip("Delete")
+                        .onClick(() => {
+                            const script = scripts[idx];
+                            const index =
+                                this.plugin.settings.snippets.indexOf(script);
+                            if (index > -1) {
+                                this.plugin.settings.snippets.splice(index, 1);
+                                this.plugin.saveSettings();
+                                this.display();
+                            }
+                        });
                 });
-
             setting.infoEl.remove();
         });
         const setting = new Setting(this.containerEl).addButton((button) => {

@@ -40,63 +40,85 @@ export default class UserPlugins extends Plugin {
         this.addSettingTab(new SettingTab(this.app, this));
     }
 
+    async runSnippet(snippet: string, idx: number) {
+        try {
+            Function("plugin", snippet)(this);
+        } catch (e) {
+            Error.captureStackTrace(e);
+            this.logScriptError(
+                `Error running snippet no.${idx}: ${e.message}`,
+                e
+            );
+        }
+    }
+
     async runSnippets() {
         let count = 0;
         for (const script of this.settings.snippets) {
-            try {
-                Function("plugin", script)(this);
-            } catch (e) {
-                Error.captureStackTrace(e);
-                this.logScriptError(
-                    `Error running snippet no.${count}: ${e.message}`,
-                    e
-                );
-            }
+            await this.runSnippet(script, count);
             count++;
         }
     }
 
+    async runScript(path: string) {
+        if (!path && path === "") {
+            return;
+        }
+        let file: TFile;
+        try {
+            file = resolve_tfile(this.app, path);
+        } catch (e) {
+            if (e instanceof UserPluginError) {
+                this.logError(`Error resolving file ${path}: ${e.message}`);
+                return;
+            }
+        }
+        const userModule: UserModule = {};
+        try {
+            Function("module", await this.app.vault.read(file))(userModule);
+        } catch (e) {
+            Error.captureStackTrace(e);
+            this.logScriptError(
+                `${file.path} evaluation error: ${e.message}`,
+                e
+            );
+            return;
+        }
+
+        try {
+            if ("onload" in userModule.exports) {
+                await userModule.exports.onload(this);
+            }
+        } catch (e) {
+            Error.captureStackTrace(e);
+            this.logScriptError(`${file.path}.onload error: ${e.message}`, e);
+            return;
+        }
+        if ("onunload" in userModule.exports) {
+            this.modulesWithUnload.push([file.path, userModule]);
+        }
+    }
+
+    async runOnunload(path: string) {
+        const toRemove: Array<number> = [];
+        await Promise.all(
+            this.modulesWithUnload
+                .filter(([p, _]) => p === path)
+                .map(async ([path, userModule], idx) => {
+                    await this.runOnUnloadOfUserModule(path, userModule);
+                    toRemove.push(idx);
+                })
+        );
+
+        toRemove
+            .slice()
+            .reverse()
+            .forEach((idx) => this.modulesWithUnload.splice(idx, 1));
+    }
+
     async runScripts() {
         for (const path of this.settings.enabledScripts) {
-            if (!path && path === "") {
-                continue;
-            }
-            let file: TFile;
-            try {
-                file = resolve_tfile(this.app, path);
-            } catch (e) {
-                if (e instanceof UserPluginError) {
-                    this.logError(`Error resolving file ${path}: ${e.message}`);
-                    continue;
-                }
-            }
-            const userModule: UserModule = {};
-            try {
-                Function("module", await this.app.vault.read(file))(userModule);
-            } catch (e) {
-                Error.captureStackTrace(e);
-                this.logScriptError(
-                    `${file.path} evaluation error: ${e.message}`,
-                    e
-                );
-                continue;
-            }
-
-            try {
-                if ("onload" in userModule.exports) {
-                    await userModule.exports.onload(this);
-                }
-            } catch (e) {
-                Error.captureStackTrace(e);
-                this.logScriptError(
-                    `${file.path}.onload error: ${e.message}`,
-                    e
-                );
-                continue;
-            }
-            if ("onunload" in userModule.exports) {
-                this.modulesWithUnload.push([file.path, userModule]);
-            }
+            await this.runScript(path);
         }
     }
 
@@ -108,17 +130,24 @@ export default class UserPlugins extends Plugin {
         console.error(`[obsidian-user-plugins] ${msg}`);
     }
 
+    private async runOnUnloadOfUserModule(
+        path: string,
+        userModule: UserModule
+    ) {
+        try {
+            await userModule.exports.onunload(this);
+        } catch (e) {
+            Error.captureStackTrace(e);
+            this.logScriptError(
+                `Error running ${path}.onunload: ${e.message}`,
+                e
+            );
+        }
+    }
+
     async onunload() {
         for (const [path, userModule] of this.modulesWithUnload) {
-            try {
-                await userModule.exports.onunload(this);
-            } catch (e) {
-                Error.captureStackTrace(e);
-                this.logScriptError(
-                    `Error running ${path}.onunload: ${e.message}`,
-                    e
-                );
-            }
+            await this.runOnUnloadOfUserModule(path, userModule);
         }
     }
 

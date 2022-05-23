@@ -125,6 +125,9 @@ module.exports.onload = function(plugin) {
         }
     });
 }
+module.exports.onunload = function(plugin) {
+    console.log('unload')
+}
 ```
 
 ## Notice
