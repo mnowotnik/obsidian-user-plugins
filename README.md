@@ -55,7 +55,10 @@ module.exports.onload = async (plugin) => {
 
 ### Installation
 
-This plugin is not yet available in the Community Plugins panel.
+~This plugin is not yet available in the Community Plugins panel.~
+
+You can easily add this plugin from Community Plugins panel.
+Alternatively, here's a manual way:
 
 `git clone` this repo to `<YOUR VAULT>/.obsidian/plugins` folder and then execute:
 
