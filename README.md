@@ -108,7 +108,7 @@ plugin.addCommand({
 #### Script file
 
 A script file follows CommonJS module specification and exports at least `onload` function that
-takes a single argument `plugin` as an input. You must specify `onload` function in th exported
+takes a single argument `plugin` as an input. You must specify `onload` function in the exported
 module and you can also specify `onunload` if needed.
 
 To use scripts specify scripts folder in settings, hit the reload button to search for scripts in the specified path
