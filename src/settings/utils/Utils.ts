@@ -1,6 +1,7 @@
 import {
     App,
     normalizePath,
+    Notice,
     TAbstractFile,
     TFile,
     TFolder,
@@ -15,9 +16,11 @@ export function resolve_tfolder(app: App, folder_str: string): TFolder {
 
     const folder = app.vault.getAbstractFileByPath(folder_str);
     if (!folder) {
+        new Notice(`obsidian-user-plugins: "${folder_str}" doesn't exist or cannot be read`);
         throw new UserPluginError(`Folder "${folder_str}" doesn't exist`);
     }
     if (!(folder instanceof TFolder)) {
+        new Notice(`obsidian-user-plugins: "${folder_str}" is a file, not a folder`);
         throw new UserPluginError(`${folder_str} is a file, not a folder`);
     }
 
