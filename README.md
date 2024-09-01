@@ -10,7 +10,7 @@ the behaviour of Obsidian just as if you created a plugin, but without the hassl
 
 ## Use cases
 
-- adding custom commands
+- [adding custom commands](https://docs.obsidian.md/Reference/TypeScript+API/Command)
 - testing an idea for a plugin
 - using plugin API to do anything you want
 
@@ -98,6 +98,7 @@ Example:
 
 ```javascript
 plugin.addCommand({
+    id: 'foo-bar',
     name: 'FooBar',
     callback: () => {
         console.log('foobar');
@@ -108,7 +109,7 @@ plugin.addCommand({
 #### Script file
 
 A script file follows CommonJS module specification and exports at least `onload` function that
-takes a single argument `plugin` as an input. You must specify `onload` function in th exported
+takes a single argument `plugin` as an input. You must specify `onload` function in the exported
 module and you can also specify `onunload` if needed.
 
 To use scripts specify scripts folder in settings, hit the reload button to search for scripts in the specified path
@@ -119,6 +120,7 @@ Example:
 module.exports = {}
 module.exports.onload = function(plugin) {
     plugin.addCommand({
+        id: 'foo-bar',
         name: 'FooBar',
         callback: () => {
             console.log('foobar');
@@ -129,6 +131,9 @@ module.exports.onunload = function(plugin) {
     console.log('unload')
 }
 ```
+## Obsidian developer documentation
+
+The [[Obsidian Developer platform](https://docs.obsidian.md/Reference/TypeScript+API/) contains extensive documentation for the various plugin methods and interfaces, e.g. for the [Command](https://docs.obsidian.md/Reference/TypeScript+API/Command) interface or the [Plugin](https://docs.obsidian.md/Reference/TypeScript+API/Plugin) class. 
 
 ## Notice
 
