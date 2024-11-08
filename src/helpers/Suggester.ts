@@ -56,7 +56,7 @@ class SuggesterModal<T> extends FuzzySuggestModal<T> {
 
 export async function suggest<T>(
     app: App,
-    textItems: string[] | ((item: T) => string),
+    itemLabels: string[] | ((item: T) => string),
     items: T[],
     placeholder: string,
     limit?: number
@@ -64,7 +64,7 @@ export async function suggest<T>(
     return new Promise((resolve, reject) => {
         new SuggesterModal(
             app,
-            textItems,
+            itemLabels,
             items,
             resolve,
             reject,

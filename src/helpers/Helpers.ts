@@ -5,11 +5,11 @@ export class Helpers {
     constructor(private app: App) {}
 
     suggest<T>(
-        textItems: string[] | ((item: T) => string),
+        itemLabels: string[] | ((item: T) => string),
         items: T[],
         placeholder?: string,
         limit?: number
     ) {
-        return suggest(this.app, textItems, items, placeholder || "", limit);
+        return suggest(this.app, itemLabels, items, placeholder || "", limit);
     }
 }

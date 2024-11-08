@@ -1,5 +1,5 @@
 import { App, PluginSettingTab, Setting, TFile } from "obsidian";
-import UserPlugins from "src/main";
+import UserPlugins from "../main";
 import FolderSuggester from "./suggesters/FolderSuggester";
 import { get_tfiles_from_folder } from "./utils/Utils";
 
