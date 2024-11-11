@@ -13,7 +13,7 @@ class SuggesterModal<T> extends FuzzySuggestModal<T> {
     ) {
         super(app);
         this.setPlaceholder(placeholder);
-        this.limit = limit;
+        this.limit = limit || 20;
     }
 
     getItems(): T[] {

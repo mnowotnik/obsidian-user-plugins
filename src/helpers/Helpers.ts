@@ -1,4 +1,4 @@
-import { App } from "obsidian";
+import { App, Notice } from "obsidian";
 import { suggest } from "./Suggester";
 
 export class Helpers {
@@ -11,5 +11,9 @@ export class Helpers {
         limit?: number
     ) {
         return suggest(this.app, itemLabels, items, placeholder || "", limit);
+    }
+
+    notify(message: string, time: number = 5000) {
+        new Notice(message, time);
     }
 }
