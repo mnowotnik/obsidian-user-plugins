@@ -1,140 +1,132 @@
-# User Plugins for Obsidian
+# Obsidian User Plugins
 
-User Plugins is a simple plugin that lets you use Obsidian plugin API in your snippets or javascript files to modify
-the behaviour of Obsidian just as if you created a plugin, but without the hassle.
+Lets you use the Obsidian plugin API in your snippets or JavaScript files to modify the behavior of Obsidian, just as if you created a plugin, but without the hassle.
 
 # Stop and read
 
-> :warning: **This plugin is for advanced users only**: DO NOT use code in scripts you do not fully
-> understand. It can delete your notes or worse. See [legal notice](#Notice).
+> :warning: **This plugin is for advanced users only**: DO NOT use code in scripts you do not fully understand. 
+> It can delete your notes or worse. See [legal notice](#Notice).
 
-## Use cases
+# Caveats
 
-- [adding custom commands](https://docs.obsidian.md/Reference/TypeScript+API/Command)
-- testing an idea for a plugin
-- using plugin API to do anything you want
+## Obsidian API compatibility
 
-## Motivating example
+> :warning: Do not assume user scripts can run any Obsidian API functions other
+> than what is shown in the examples. Creating settings is especially not supported, but it is on the [roadmap](#roadmap).
 
-Add command `Create new note in given folder` that allows you to choose
-a folder before creating a note.
+## Versioning
+
+Newer versions of this plugin will usually require the newest Obsidian version due to its API changes. Consider this plugin "bleeding edge" for now.
+
+# Use cases
+
+- [Adding custom commands](https://docs.obsidian.md/Reference/TypeScript+API/Command)
+- Testing an idea for a plugin
+- Using Obsidian plugin API to do anything you want
+
+# Motivating example
+
+Add command `Create new note in folder` that allows you to choose a folder
+before creating a note:
 
 ```javascript
-module.exports = {}
+module.exports = {
+    async onload(plugin) {
+        plugin.addCommand({
+            id: "new-note-in-folder",
+            name: "Create new note in a folder",
+            callback: async () => {
+                const api = plugin.api;
+                const folders = api.getAllFolders();
+                const folder = await api.suggest(folders, folders);
+                const createdNote = await plugin.app.vault.create(folder + "/Hello World.md", "Hello World!");
+                api.openFile(createdNote);
+            },
+        });
+    },
+    async onunload() {
+        // optional
+        console.log("unloading plugin");
+    },
+};
 
-module.exports.onload = async (plugin) => {
-  const MarkdownView = plugin.passedModules.obsidian.MarkdownView
-  plugin.addCommand({
-    id: 'new-note-in-folder',
-    name: 'Create new note in a folder',
-    callback: async () => {
-      const folders = plugin.app.vault.getAllLoadedFiles().filter(i => i.children).map(folder => folder.path);
-      const folder = await plugin.helpers.suggest(folders, folders);
-      const created_note = await plugin.app.vault.create(folder + "/Untitled.md", "")
-      const active_leaf = plugin.app.workspace.activeLeaf;
-      if (!active_leaf) {
-        return;
-      }
-      await active_leaf.openFile(created_note, {
-        state: { mode: "source" },
-      });
-      plugin.app.workspace.trigger("create",created_note)
-      const view = app.workspace.getActiveViewOfType(MarkdownView);
-      if (view) {
-        const editor = view.editor;
-        editor.focus()
-      }
-    }
-  });
-}
 ```
 
 ![Command in palette](https://user-images.githubusercontent.com/8244123/167032593-0dbe59b1-2c2a-4700-83f4-01609cf0d30a.png)
 
-## Quick start
+# Quick start
 
-### Installation
-
-~This plugin is not yet available in the Community Plugins panel.~
+## Installation
 
 You can easily add this plugin from Community Plugins panel.
 Alternatively, here's a manual way:
 
-`git clone` this repo to `<YOUR VAULT>/.obsidian/plugins` folder and then execute:
+Clone this repository into the `<YOUR VAULT>/.obsidian/plugins` folder and then execute:
 
 ```bash
 npm install
 npm run build
 ```
 
-### Usage
+## Usage
 
-Scripts can be added either by manually adding snippets or enabling each individual file in
-a scripts directory in a vault. Scripts have access to a `Plugin` object. Its API is declared [here](https://github.com/obsidianmd/obsidian-api/blob/master/obsidian.d.ts).
-`plugin` has two additional members:
+You can add scripts either by manually adding snippets or enabling each individual file in the defined scripts directory in your vault.
 
-- `helpers`
+To use scripts, specify a scripts folder in settings, hit the reload button to search for scripts in the specified path,
+then enable each script found using a toggle button.
 
-    Currently it has a single method that opens a suggester modal:
+There are a few types of scripts that you can use.
 
-    ```javascript
-    suggest<T>(
-        textItems: string[] | ((item: T) => string),
-        items: T[],
-        placeholder?: string,
-        limit?: number
-    )
-    ```
+### Obsidian plugin type
 
-- `passedModules`
+Has the basic structure of an Obsidian plugin:
 
-    Currently only gives access to the `obsidian` module
+```typescript
+import { Plugin } from "obsidian";
 
-#### Snippet
-
-A snippet is just a javascript block of code that has access to a `plugin` variable.
-It is executed in the `onload` method of the plugin.
-Example:
-
-```javascript
-plugin.addCommand({
-    id: 'foo-bar',
-    name: 'FooBar',
-    callback: () => {
-        console.log('foobar');
-    }
-});
-```
-
-#### Script file
-
-A script file follows CommonJS module specification and exports at least `onload` function that
-takes a single argument `plugin` as an input. You must specify `onload` function in the exported
-module and you can also specify `onunload` if needed.
-
-To use scripts specify scripts folder in settings, hit the reload button to search for scripts in the specified path
-and then enable each found script using a toggle button.
-
-Example:
-```javascript
-module.exports = {}
-module.exports.onload = function(plugin) {
-    plugin.addCommand({
-        id: 'foo-bar',
-        name: 'FooBar',
-        callback: () => {
-            console.log('foobar');
-        }
-    });
-}
-module.exports.onunload = function(plugin) {
-    console.log('unload')
+export default class MyPlugin extends Plugin {
+	async onload() {
+        // code here
+	}
 }
 ```
-## Obsidian developer documentation
+Written in either [Typescript](./examples/ts-plugin/main.ts) or [Javascript](./examples/js-plugin/plugin.js) flavour.
+
+You have access to [Helper API](#helper-api) by getting `obsidian-user-plugins` via `this.app.plugins.getPlugin`.
+
+### Module type
+
+A JavaScript module that exports at least an `async onload(plugin): void` method and
+optionally an `async onnunload(): void` method. It has access to the global function
+`require` to get the `obsidian` module.
+The `plugin` parameter is an instance of `obsidian-user-plugins` with the [Helper API](#helper-api). 
+
+See [example](./examples/js-module/module.js).
+
+### Snippet
+
+A snippet is a JavaScript block of code that has access to the global `plugin`
+variable. It also has access to the global function `require` to get the `obsidian`
+module. Snippets are executed during the plugin initialization phase in `onload()`.
+You can also access [Helper API](#helper-api) via the `plugin.api` object.
+
+See [example](./examples/js-snippet/snippet.js).
+
+# Helper API
+
+This plugin exposes an `api` object with handy methods. Check them out [here](./src/helpers/Helpers.ts).
+
+# Roadmap
+
+- [ ] Custom configuration per script file
+- [ ] Additional functions in the [Helper API](#helper-api)
+
+# Obsidian Plugin API
+
+The Obsidian plugin API is declared [here](https://github.com/obsidianmd/obsidian-api/blob/master/obsidian.d.ts).
 
 The [Obsidian Developer platform](https://docs.obsidian.md/Reference/TypeScript+API/) contains extensive documentation for the various plugin methods and interfaces, e.g. for the [Command](https://docs.obsidian.md/Reference/TypeScript+API/Command) interface or the [Plugin](https://docs.obsidian.md/Reference/TypeScript+API/Plugin) class. 
 
-## Notice
+# Notice
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.

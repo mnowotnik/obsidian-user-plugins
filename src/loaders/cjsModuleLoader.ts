@@ -44,7 +44,7 @@ export default class CjsModuleLoader implements Loader {
 
     async runSnippet(snippet: string, idx: number) {
         try {
-            Function("plugin", snippet)(this);
+            Function("plugin", "require", snippet)(this.plugin, require);
         } catch (e) {
             Error.captureStackTrace(e);
             new Notice(
@@ -123,8 +123,7 @@ export default class CjsModuleLoader implements Loader {
                         },
                     ]);
                 }
-            }
-            if (userModule.exports.default) {
+            } else if (userModule.exports.default) {
                 const userPlugin = new userModule.exports.default(
                     this.app,
                     this.plugin.manifest

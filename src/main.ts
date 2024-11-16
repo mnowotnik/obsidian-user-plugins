@@ -5,18 +5,28 @@ import { SettingsManager, SettingTab } from "./settings/Settings";
 import { Helpers } from "./helpers/Helpers";
 
 export default class UserPlugins extends Plugin {
+    api: Helpers;
+    /**
+     * @deprecated
+     */
+    passedModules: Record<string, any>;
+    /**
+     * @deprecated
+     */
+    helpers: Helpers;
     private commonJsModuleLoader: CjsModuleLoader;
     private settingsManager: SettingsManager;
-    passedModules: Record<string, any>;
-    helpers: Helpers;
-    require: (s: string) => Promise<any>;
 
     async onload() {
         this.settingsManager = new SettingsManager(this, await this.loadData());
+        this.commonJsModuleLoader = new CjsModuleLoader(
+            this,
+            this.settingsManager.settings
+        );
 
-        this.require = (s: string) => require(s);
         this.passedModules = { obsidian };
         this.helpers = new Helpers(this.app);
+        this.api = new Helpers(this.app);
         this.addSettingTab(
             new SettingTab({
                 settingsManager: this.settingsManager,
@@ -29,10 +39,6 @@ export default class UserPlugins extends Plugin {
         // wait for vault files to load
         // FIXME maybe there's a better hook
         this.app.workspace.onLayoutReady(async () => {
-            this.commonJsModuleLoader = new CjsModuleLoader(
-                this,
-                this.settingsManager.settings
-            );
             try {
                 await this.commonJsModuleLoader.onload();
             } catch (e) {

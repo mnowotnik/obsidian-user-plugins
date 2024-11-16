@@ -78,6 +78,9 @@ export class SettingTab extends PluginSettingTab {
                 this.app,
                 this.settingsManager.settings.scriptsFolder
             );
+            files = files.filter(
+                (f) => f.path.contains("node_modules") == false
+            );
         } catch (e) {
             console.error(`Failed to read user scripts folder: ${e.message}`);
             new Notice("Failed to read user scripts folder");
