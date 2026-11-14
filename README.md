@@ -123,7 +123,7 @@ const { default: CalHeatmap } = await plugin.import("Scripts/vendor/cal-heatmap.
 
 // a stylesheet from a URL, pinned to a hash; resolves to { el, remove() }
 await plugin.import("https://unpkg.com/cal-heatmap@4.2.4/dist/cal-heatmap.css", {
-    sha256: "2d70c33309b23ec708d1667cbb4bc1c4763b096154ec1d012eddcdca3850f76e",
+    sha256: "<the file's SHA-256, 64 hex characters>",
 });
 
 // a CommonJS/UMD file; resolves to module.exports
@@ -149,7 +149,7 @@ const lib = await plugin.import("Scripts/vendor/lib.js", { type: "cjs" });
 - Imported ES modules can't use relative `import` statements, because they're loaded from
   a blob URL. Use self-contained (bundled) files, or call `plugin.import` again for dependencies.
 - Styles are added to every window, including popout windows opened later, and are removed
-  when User Plugins unloads (after your scripts' `onunload`, which gets up to 5 seconds).
+  when User Plugins unloads (after your scripts' `onunload`, which get up to 5 seconds in total).
 
 From a plugin-type script, use `this.app.plugins.getPlugin("obsidian-user-plugins").import(...)`.
 

@@ -55,8 +55,16 @@ interface Loaded {
 
 const URL_RE = /^https?:\/\//i;
 
+function urlPath(source: string): string {
+    try {
+        return new URL(source).pathname;
+    } catch {
+        throw new Error(`plugin.import: invalid URL ${source}`);
+    }
+}
+
 function extensionOf(source: string): string {
-    const path = URL_RE.test(source) ? new URL(source).pathname : source;
+    const path = URL_RE.test(source) ? urlPath(source) : source;
     const name = path.slice(path.lastIndexOf("/") + 1);
     const dot = name.lastIndexOf(".");
     return dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
@@ -80,7 +88,7 @@ function typeOf(source: string): ImportType {
 
 const SHA256_RE = /^[0-9a-f]{64}$/;
 
-function isPlainObject(value: unknown): boolean {
+function isPlainObject(value: unknown): value is Record<string, unknown> {
     if (typeof value !== "object" || value === null) return false;
     const proto = Object.getPrototypeOf(value);
     return proto === Object.prototype || proto === null;
@@ -95,7 +103,7 @@ function toRequest(source: unknown, options: unknown): ImportRequest {
     if (options != null && !isPlainObject(options)) {
         throw new Error("plugin.import: options must be an object");
     }
-    const opts = (options ?? {}) as Record<string, unknown>;
+    const opts: Record<string, unknown> = options ?? {};
     // a misspelled option (e.g. "hash") must not silently skip a hash check
     const unknownKeys = Object.keys(opts).filter(
         (k) => !OPTION_KEYS.includes(k)

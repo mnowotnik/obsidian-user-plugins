@@ -98,15 +98,16 @@ export default class UserPlugins extends Plugin {
         // the importer unloads after the scripts' own onunload, so they can
         // still use plugin.import there, but a script that never finishes
         // unloading can't keep it alive
-        const scriptsUnloaded = this.commonJsModuleLoader.onunload();
+        let timer = 0;
         try {
             await Promise.race([
-                scriptsUnloaded,
-                new Promise((resolve) =>
-                    window.setTimeout(resolve, SCRIPT_UNLOAD_TIMEOUT_MS)
-                ),
+                this.commonJsModuleLoader.onunload(),
+                new Promise((resolve) => {
+                    timer = window.setTimeout(resolve, SCRIPT_UNLOAD_TIMEOUT_MS);
+                }),
             ]);
         } finally {
+            window.clearTimeout(timer);
             this.importer.unload();
         }
     }
