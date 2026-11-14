@@ -102,13 +102,16 @@ function toRequest(source: unknown, options: unknown): ImportRequest {
             );
         }
     }
+    if (fresh != null && typeof fresh !== "boolean") {
+        throw new Error("plugin.import: fresh must be true or false");
+    }
     const resolvedType = (type as ImportType | null) ?? typeOf(source);
     const normalized = URL_RE.test(source) ? source : normalizePath(source);
     return {
         source: normalized,
         type: resolvedType,
         sha256: hash,
-        fresh: Boolean(fresh),
+        fresh: fresh === true,
         key: `${resolvedType}\n${normalized}`,
     };
 }
@@ -160,6 +163,7 @@ export class Importer {
         source: string,
         options: ImportOptions & { type: "css" }
     ): Promise<StyleHandle>;
+    /** For URLs with a query string, pass `type: "css"` to get a StyleHandle type. */
     import(
         source: `${string}.css`,
         options?: ImportOptions & { type?: "css" }
@@ -193,7 +197,7 @@ export class Importer {
     /** Starts loading and keeps the cache pointing at the newest load. */
     private start(request: ImportRequest): Promise<Loaded> {
         const { key } = request;
-        const loading = this.load(request);
+        const loading = this.load(request, this.latest.get(key));
         this.latest.set(key, loading);
         // a fresh load replaces the cached one only once it succeeds
         if (!this.cache.has(key)) this.cache.set(key, { loading });
@@ -208,6 +212,7 @@ export class Importer {
                 if (this.cache.get(key)?.loading === loading) {
                     this.cache.delete(key);
                 }
+                if (this.latest.get(key) === loading) this.latest.delete(key);
             }
         );
         return loading;
@@ -238,23 +243,32 @@ export class Importer {
         }
     }
 
-    private async load(request: ImportRequest): Promise<Loaded> {
+    /**
+     * Reads, checks and evaluates a file. `previous` is the last load started
+     * for the same key: evaluation waits for it, so loads of one file take
+     * effect in the order they were started and the newest is applied last.
+     */
+    private async load(
+        request: ImportRequest,
+        previous?: Promise<Loaded>
+    ): Promise<Loaded> {
         const { source, type } = request;
         const bytes = await this.read(source);
         const sha256 = await sha256Hex(bytes);
         if (request.sha256 && sha256 !== request.sha256) {
             throw integrityError(source, sha256);
         }
+        await previous?.catch(() => undefined);
         // the plugin may have been unloaded while reading
         this.throwIfDisposed();
         return { value: await this.evaluate(type, bytes, request), sha256 };
     }
 
-    private evaluate(
+    private async evaluate(
         type: ImportType,
         bytes: ArrayBuffer,
         request: ImportRequest
-    ): unknown {
+    ): Promise<unknown> {
         switch (type) {
             case "esm":
                 return this.importEsm(bytes);

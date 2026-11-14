@@ -133,7 +133,9 @@ const lib = await plugin.import("Scripts/vendor/lib.js", { type: "cjs" });
 - The file type comes from the extension: `.js`/`.mjs` are ES modules, `.cjs` is CommonJS
   and `.css` is a stylesheet. Use `type: "esm" | "cjs" | "css"` to override it.
 - `sha256` (optional): the file's SHA-256 as 64 hex characters. If the file doesn't match,
-  it isn't loaded and the promise rejects. Recommended for URLs, so a changed file never runs.
+  the promise rejects. When this call is the one that loads the file, a mismatching file never
+  runs; recommended for URLs. If another script already loaded the same file without a hash,
+  it has already run; pass `fresh: true` as well to be sure the checked version is what runs.
 - Each source is loaded once per type and shared between scripts, whether or not a call passes
   `sha256` (a hash is checked against the bytes that were loaded). Pass `fresh: true` to load it
   again; the newest load then replaces the old one once it succeeds (for CSS, the old style is removed).

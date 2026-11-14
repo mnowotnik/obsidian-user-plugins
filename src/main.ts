@@ -43,7 +43,6 @@ export default class UserPlugins extends Plugin {
         this.helpers = this.api;
         this.importer = new Importer(this.app);
         this.import = this.importer.import.bind(this.importer);
-        this.register(() => this.importer.unload());
         this.registerEvent(
             this.app.workspace.on("window-open", (_, win) =>
                 this.importer.windowOpened(win.document)
@@ -95,5 +94,7 @@ export default class UserPlugins extends Plugin {
 
     async onunload() {
         await this.commonJsModuleLoader.onunload();
+        // after the scripts' own onunload, so they can still use plugin.import
+        this.importer.unload();
     }
 }
