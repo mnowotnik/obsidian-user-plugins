@@ -130,6 +130,7 @@ await plugin.import("https://unpkg.com/cal-heatmap@4.2.4/dist/cal-heatmap.css", 
 const lib = await plugin.import("Scripts/vendor/lib.js", { type: "cjs" });
 ```
 
+- Options other than `sha256`, `type` and `fresh` are rejected, so a typo can't skip a hash check.
 - The file type comes from the extension: `.js`/`.mjs` are ES modules, `.cjs` is CommonJS
   and `.css` is a stylesheet. Use `type: "esm" | "cjs" | "css"` to override it.
 - `sha256` (optional): the file's SHA-256 as 64 hex characters. If the file doesn't match,

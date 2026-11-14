@@ -78,16 +78,30 @@ function typeOf(source: string): ImportType {
 }
 
 const SHA256_RE = /^[0-9a-f]{64}$/;
+const OPTION_KEYS: readonly string[] = ["sha256", "type", "fresh"];
 
 /** Validates input (which often comes from plain JS) into an ImportRequest. */
 function toRequest(source: unknown, options: unknown): ImportRequest {
     if (typeof source !== "string" || !source) {
         throw new Error("plugin.import: source must be a vault path or URL");
     }
-    if (options != null && typeof options !== "object") {
+    if (
+        options != null &&
+        (typeof options !== "object" || Array.isArray(options))
+    ) {
         throw new Error("plugin.import: options must be an object");
     }
-    const { type, sha256, fresh } = (options ?? {}) as Record<string, unknown>;
+    const opts = (options ?? {}) as Record<string, unknown>;
+    // a misspelled option (e.g. "hash") must not silently skip a hash check
+    const unknownKeys = Object.keys(opts).filter(
+        (k) => !OPTION_KEYS.includes(k)
+    );
+    if (unknownKeys.length) {
+        throw new Error(
+            `plugin.import: unknown option ${unknownKeys.join(", ")}; use sha256, type or fresh`
+        );
+    }
+    const { type, sha256, fresh } = opts;
     if (type != null && !IMPORT_TYPES.includes(type as ImportType)) {
         throw new Error(
             `plugin.import: unknown type "${type}"; use "esm", "cjs" or "css"`
@@ -143,8 +157,11 @@ export class Importer {
      * in the order they were started, so the newest one is applied last.
      */
     private readonly queue = new Map<string, Promise<Loaded>>();
-    /** The load queued directly after each load. */
-    private readonly successor = new WeakMap<Promise<Loaded>, Promise<Loaded>>();
+    /** The load queued directly after each load, and what it was asked for. */
+    private readonly successor = new WeakMap<
+        Promise<Loaded>,
+        { loading: Promise<Loaded>; request: ImportRequest }
+    >();
     /** The current stylesheet for each CSS cache key. */
     private readonly sheets = new Map<string, Sheet>();
     private readonly popouts = new Set<Document>();
@@ -212,7 +229,7 @@ export class Importer {
                   () => this.load(request)
               )
             : this.load(request);
-        if (previous) this.successor.set(previous, loading);
+        if (previous) this.successor.set(previous, { loading, request });
         this.queue.set(key, loading);
         // a fresh load replaces the cached one only once it succeeds
         if (!this.cache.has(key)) this.cache.set(key, loading);
@@ -225,11 +242,15 @@ export class Importer {
                 if (this.queue.get(key) === loading) this.queue.delete(key);
                 if (this.cache.get(key) === loading) {
                     // hand plain imports to the load queued right after this
-                    // one, if any, so the file isn't loaded a second time;
-                    // otherwise forget the failure, so retrying works
+                    // one, so the file isn't loaded a second time, unless that
+                    // load checks another caller's hash. Otherwise forget the
+                    // failure, so retrying works.
                     const next = this.successor.get(loading);
-                    if (next) this.cache.set(key, next);
-                    else this.cache.delete(key);
+                    if (next && !next.request.sha256) {
+                        this.cache.set(key, next.loading);
+                    } else {
+                        this.cache.delete(key);
+                    }
                 }
             }
         );
