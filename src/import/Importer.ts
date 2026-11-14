@@ -78,6 +78,12 @@ function typeOf(source: string): ImportType {
 }
 
 const SHA256_RE = /^[0-9a-f]{64}$/;
+
+function isPlainObject(value: unknown): boolean {
+    if (typeof value !== "object" || value === null) return false;
+    const proto = Object.getPrototypeOf(value);
+    return proto === Object.prototype || proto === null;
+}
 const OPTION_KEYS: readonly string[] = ["sha256", "type", "fresh"];
 
 /** Validates input (which often comes from plain JS) into an ImportRequest. */
@@ -85,10 +91,7 @@ function toRequest(source: unknown, options: unknown): ImportRequest {
     if (typeof source !== "string" || !source) {
         throw new Error("plugin.import: source must be a vault path or URL");
     }
-    if (
-        options != null &&
-        (typeof options !== "object" || Array.isArray(options))
-    ) {
+    if (options != null && !isPlainObject(options)) {
         throw new Error("plugin.import: options must be an object");
     }
     const opts = (options ?? {}) as Record<string, unknown>;
@@ -108,7 +111,8 @@ function toRequest(source: unknown, options: unknown): ImportRequest {
         );
     }
     let hash = "";
-    if (sha256 != null) {
+    // a present key must hold a hash: `sha256: HASHES.typo` is undefined
+    if ("sha256" in opts) {
         hash = typeof sha256 === "string" ? sha256.trim().toLowerCase() : "";
         if (!SHA256_RE.test(hash)) {
             throw new Error(
@@ -223,9 +227,11 @@ export class Importer {
     private start(request: ImportRequest): Promise<Loaded> {
         const { key } = request;
         const previous = this.queue.get(key);
+        // a plain import queued behind another load of the same file reuses
+        // its result, so the file isn't run twice; a fresh one loads again
         const loading = previous
             ? previous.then(
-                  () => this.load(request),
+                  (loaded) => (request.fresh ? this.load(request) : loaded),
                   () => this.load(request)
               )
             : this.load(request);
@@ -304,7 +310,7 @@ export class Importer {
     ): Promise<unknown> {
         switch (type) {
             case "esm":
-                return this.importEsm(bytes);
+                return this.importEsm(bytes, request.source);
             case "cjs":
                 return evaluateCjs(new TextDecoder().decode(bytes), request.source)
                     .exports;
@@ -325,9 +331,15 @@ export class Importer {
         return this.app.vault.adapter.readBinary(source);
     }
 
-    private async importEsm(bytes: ArrayBuffer): Promise<unknown> {
+    private async importEsm(
+        bytes: ArrayBuffer,
+        source: string
+    ): Promise<unknown> {
+        // sourceURL makes stack traces show the vault path or URL, not blob:
         const url = URL.createObjectURL(
-            new Blob([bytes], { type: "text/javascript" })
+            new Blob([bytes, `\n//# sourceURL=${source}`], {
+                type: "text/javascript",
+            })
         );
         try {
             return await import(url);
