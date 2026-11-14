@@ -3,6 +3,7 @@ import CjsModuleLoader from "./loaders/cjsModuleLoader";
 import * as obsidian from "obsidian";
 import { SettingsManager, SettingTab } from "./settings/Settings";
 import { Helpers } from "./helpers/Helpers";
+import { Importer, ImportOptions } from "./import/Importer";
 import {
     PALETTE_COMMAND_ID,
     UserPluginsCommandPalette,
@@ -23,6 +24,7 @@ export default class UserPlugins extends Plugin {
     private commonJsModuleLoader: CjsModuleLoader;
     private settingsManager: SettingsManager;
     private ribbonIconEl: HTMLElement | null = null;
+    private importer: Importer;
 
     async onload() {
         this.settingsManager = new SettingsManager(this, await this.loadData());
@@ -34,6 +36,8 @@ export default class UserPlugins extends Plugin {
         this.passedModules = { obsidian };
         this.api = new Helpers(this.app);
         this.helpers = this.api;
+        this.importer = new Importer(this.app);
+        this.register(() => this.importer.unload());
         this.addSettingTab(
             new SettingTab({
                 settingsManager: this.settingsManager,
@@ -54,6 +58,14 @@ export default class UserPlugins extends Plugin {
         this.app.workspace.onLayoutReady(() =>
             this.commonJsModuleLoader.onload()
         );
+    }
+
+    /**
+     * Loads a JS module or CSS file from the vault or an http(s) URL.
+     * ESM resolves to the module, CJS to module.exports, CSS to a StyleHandle.
+     */
+    import(source: string, options?: ImportOptions): Promise<unknown> {
+        return this.importer.import(source, options);
     }
 
     openCommandPalette() {

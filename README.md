@@ -112,6 +112,35 @@ You can also access [Helper API](#helper-api) via the `plugin.api` object.
 
 See [example](./examples/js-snippet/snippet.js).
 
+# Importing libraries and styles
+
+`await plugin.import(source, options?)` loads a JavaScript module or a CSS file,
+either from your vault or from an `http(s)://` URL. It works on desktop and mobile.
+
+```javascript
+// a vendored ES module in the vault; resolves to the module's exports
+const { default: CalHeatmap } = await plugin.import("Scripts/vendor/cal-heatmap.mjs");
+
+// a stylesheet from a URL, pinned to a hash; resolves to { el, remove() }
+await plugin.import("https://unpkg.com/cal-heatmap@4.2.4/dist/cal-heatmap.css", {
+    sha256: "2d70c33309b23ec708d1667cbb4bc1c4763b096154ec1d012eddcdca3850f76e",
+});
+
+// a CommonJS/UMD file; resolves to module.exports
+const lib = await plugin.import("Scripts/vendor/lib.js", { type: "cjs" });
+```
+
+- The file type comes from the extension: `.js`/`.mjs` are ES modules, `.cjs` is CommonJS
+  and `.css` is a stylesheet. Use `type: "esm" | "cjs" | "css"` to override it.
+- `sha256` (optional): the file's SHA-256 in hex. If the file doesn't match, it isn't
+  loaded and the promise rejects. Recommended for URLs, so a changed file never runs.
+- Each source is loaded once and shared between scripts. Pass `fresh: true` to load it again.
+- Imported ES modules can't use relative `import` statements, because they're loaded from
+  a blob URL. Use self-contained (bundled) files, or call `plugin.import` again for dependencies.
+- Styles are added to the main window only, and are removed when User Plugins unloads.
+
+From a plugin-type script, use `this.app.plugins.getPlugin("obsidian-user-plugins").import(...)`.
+
 # Command palette
 
 User Plugins has its own command palette, similar to the one in BRAT. It lists only

@@ -4,6 +4,7 @@ import { Settings } from "src/settings/Settings";
 import { UserPluginError } from "src/utils/Error";
 import { getFile } from "src/utils/vault";
 import { errorMessage, logError, logScriptError } from "src/utils/log";
+import { evaluateCjs } from "./evaluateCjs";
 import { Loader } from "./loader";
 
 /** What a module-type user script exports. */
@@ -78,16 +79,13 @@ export default class CjsModuleLoader implements Loader {
             logError(`Error: ${e}`);
             return;
         }
-        const userModule: UserCjsModule = { exports: {} };
+        let userModule: UserCjsModule;
         try {
             const source = await this.app.vault.read(file);
-            // sourceURL makes stack traces and devtools show the vault path
-            Function(
-                "module",
-                "exports",
-                "require",
-                `${source}\n//# sourceURL=${file.path}`
-            )(userModule, userModule.exports, require);
+            userModule = evaluateCjs<UserCjsModule["exports"]>(
+                source,
+                file.path
+            );
         } catch (e) {
             logScriptError(
                 `${file.path} evaluation error: ${errorMessage(e)}`,
