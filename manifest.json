@@ -1,7 +1,7 @@
 {
 	"id": "obsidian-user-plugins",
 	"name": "User Plugins",
-	"minAppVersion": "1.7.2",
+	"minAppVersion": "1.11.4",
 	"description": "Use ts and js modules or js snippets to code your own plugins",
 	"author": "mnowotnik",
 	"authorUrl": "https://mnowotnik.com",
