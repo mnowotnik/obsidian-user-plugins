@@ -82,10 +82,7 @@ export default class CjsModuleLoader implements Loader {
         let userModule: UserCjsModule;
         try {
             const source = await this.app.vault.read(file);
-            userModule = evaluateCjs<UserCjsModule["exports"]>(
-                source,
-                file.path
-            );
+            userModule = evaluateCjs(source, file.path) as UserCjsModule;
         } catch (e) {
             logScriptError(
                 `${file.path} evaluation error: ${errorMessage(e)}`,
