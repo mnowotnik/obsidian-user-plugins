@@ -133,7 +133,8 @@ const lib = await plugin.import("Scripts/vendor/lib.js", { type: "cjs" });
 - Options other than `sha256`, `type` and `fresh` are rejected, so a typo can't skip a hash check.
 - The file type comes from the extension: `.js`/`.mjs` are ES modules, `.cjs` is CommonJS
   and `.css` is a stylesheet. Use `type: "esm" | "cjs" | "css"` to override it.
-- `sha256` (optional): the file's SHA-256 as 64 hex characters. If the file doesn't match,
+- `sha256` (optional): the file's SHA-256 as 64 hex characters. If you pass the key, it must hold
+  a hash: `{ sha256: undefined }` is rejected, so a mistyped lookup can't skip the check. If the file doesn't match,
   the promise rejects. When this call is the one that loads the file, a mismatching file never
   runs; recommended for URLs. If another script already loaded the same file without a hash,
   it has already run; pass `fresh: true` as well to be sure the checked version is what runs.
@@ -148,7 +149,7 @@ const lib = await plugin.import("Scripts/vendor/lib.js", { type: "cjs" });
 - Imported ES modules can't use relative `import` statements, because they're loaded from
   a blob URL. Use self-contained (bundled) files, or call `plugin.import` again for dependencies.
 - Styles are added to every window, including popout windows opened later, and are removed
-  when User Plugins unloads.
+  when User Plugins unloads (after your scripts' `onunload`, which gets up to 5 seconds).
 
 From a plugin-type script, use `this.app.plugins.getPlugin("obsidian-user-plugins").import(...)`.
 

@@ -10,7 +10,8 @@ export interface ImportOptions {
     /**
      * Expected SHA-256 of the file (64 hex characters). If it doesn't match,
      * the import rejects; the file doesn't run unless another call already
-     * loaded it (pass `fresh: true` to be sure).
+     * loaded it (pass `fresh: true` to be sure). If the key is present it
+     * must hold a hash: omit it rather than passing undefined.
      */
     sha256?: string;
     /** Overrides the type guessed from the file extension. */

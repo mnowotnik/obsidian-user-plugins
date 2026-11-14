@@ -10,6 +10,7 @@ import {
 } from "./palette/CommandPalette";
 
 const RIBBON_ICON = "plug-zap";
+const SCRIPT_UNLOAD_TIMEOUT_MS = 5000;
 
 export default class UserPlugins extends Plugin {
     api: Helpers;
@@ -94,10 +95,18 @@ export default class UserPlugins extends Plugin {
     }
 
     async onunload() {
+        // the importer unloads after the scripts' own onunload, so they can
+        // still use plugin.import there, but a script that never finishes
+        // unloading can't keep it alive
+        const scriptsUnloaded = this.commonJsModuleLoader.onunload();
         try {
-            await this.commonJsModuleLoader.onunload();
+            await Promise.race([
+                scriptsUnloaded,
+                new Promise((resolve) =>
+                    window.setTimeout(resolve, SCRIPT_UNLOAD_TIMEOUT_MS)
+                ),
+            ]);
         } finally {
-            // after the scripts' own onunload, so they can still use plugin.import
             this.importer.unload();
         }
     }
