@@ -137,6 +137,9 @@ const lib = await plugin.import("Scripts/vendor/lib.js", { type: "cjs" });
   runs; recommended for URLs. If another script already loaded the same file without a hash,
   it has already run; pass `fresh: true` as well to be sure the checked version is what runs.
   Calls that share one load also share its outcome, including a failed hash check.
+- Loads of the same file run one at a time, in the order they were started. A load that never
+  finishes (a request that hangs, or modules whose top-level code `await`s each other) blocks
+  later imports of that file until User Plugins is reloaded.
 - Each source is loaded once per type and shared between scripts, whether or not a call passes
   `sha256` (a hash is checked against the bytes that were loaded). Pass `fresh: true` to load it
   again; the newest load then replaces the old one once it succeeds (for CSS, the old style is removed).

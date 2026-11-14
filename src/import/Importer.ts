@@ -7,7 +7,11 @@ export type ImportType = "esm" | "cjs" | "css";
 const IMPORT_TYPES: readonly ImportType[] = ["esm", "cjs", "css"];
 
 export interface ImportOptions {
-    /** Expected SHA-256 of the file (hex). If it doesn't match, nothing runs. */
+    /**
+     * Expected SHA-256 of the file (64 hex characters). If it doesn't match,
+     * the import rejects; the file doesn't run unless another call already
+     * loaded it (pass `fresh: true` to be sure).
+     */
     sha256?: string;
     /** Overrides the type guessed from the file extension. */
     type?: ImportType;
@@ -139,6 +143,8 @@ export class Importer {
      * in the order they were started, so the newest one is applied last.
      */
     private readonly queue = new Map<string, Promise<Loaded>>();
+    /** The load queued directly after each load. */
+    private readonly successor = new WeakMap<Promise<Loaded>, Promise<Loaded>>();
     /** The current stylesheet for each CSS cache key. */
     private readonly sheets = new Map<string, Sheet>();
     private readonly popouts = new Set<Document>();
@@ -176,7 +182,8 @@ export class Importer {
             this.throwIfDisposed();
             request = toRequest(source, options);
         } catch (e) {
-            return this.logged(Promise.reject(e), String(source));
+            const label = typeof source === "string" ? source : typeof source;
+            return this.logged(Promise.reject(e), label);
         }
         const { key } = request;
         const cached = this.cache.get(key);
@@ -205,6 +212,7 @@ export class Importer {
                   () => this.load(request)
               )
             : this.load(request);
+        if (previous) this.successor.set(previous, loading);
         this.queue.set(key, loading);
         // a fresh load replaces the cached one only once it succeeds
         if (!this.cache.has(key)) this.cache.set(key, loading);
@@ -214,13 +222,13 @@ export class Importer {
                 if (this.queue.get(key) === loading) this.queue.delete(key);
             },
             () => {
-                const newest = this.queue.get(key);
-                if (newest === loading) this.queue.delete(key);
+                if (this.queue.get(key) === loading) this.queue.delete(key);
                 if (this.cache.get(key) === loading) {
-                    // hand plain imports to a newer queued load, if any, so the
-                    // file isn't loaded a second time; otherwise forget the
-                    // failure, so fixing the file and retrying works
-                    if (newest && newest !== loading) this.cache.set(key, newest);
+                    // hand plain imports to the load queued right after this
+                    // one, if any, so the file isn't loaded a second time;
+                    // otherwise forget the failure, so retrying works
+                    const next = this.successor.get(loading);
+                    if (next) this.cache.set(key, next);
                     else this.cache.delete(key);
                 }
             }
@@ -255,6 +263,8 @@ export class Importer {
 
     /** Reads, checks and evaluates a file. */
     private async load(request: ImportRequest): Promise<Loaded> {
+        // a queued load may only start after the plugin was unloaded
+        this.throwIfDisposed();
         const { source, type } = request;
         const bytes = await this.read(source);
         const sha256 = await sha256Hex(bytes);
