@@ -1,11 +1,16 @@
-// Credits go to Liam's Periodic Notes Plugin: https://github.com/liamcain/obsidian-periodic-notes
+// Originally based on Liam's Periodic Notes Plugin: https://github.com/liamcain/obsidian-periodic-notes
 // MIT License
 // Copyright (c) 2021 Liam Cain
 
-import { TAbstractFile, TFolder } from "obsidian";
-import { TextInputSuggest } from "./suggest";
+import { AbstractInputSuggest, App, TAbstractFile, TFolder } from "obsidian";
 
-export default class extends TextInputSuggest<TFolder> {
+// AbstractInputSuggest renders the popover in the window that owns the input,
+// so it also works when Settings is open in a popout window.
+export default class FolderSuggester extends AbstractInputSuggest<TFolder> {
+    constructor(app: App, private textInputEl: HTMLInputElement) {
+        super(app, textInputEl);
+    }
+
     getSuggestions(inputStr: string): TFolder[] {
         const abstractFiles = this.app.vault.getAllLoadedFiles();
         const folders: TFolder[] = [];
@@ -14,7 +19,7 @@ export default class extends TextInputSuggest<TFolder> {
         abstractFiles.forEach((folder: TAbstractFile) => {
             if (
                 folder instanceof TFolder &&
-                folder.path.toLowerCase().contains(lowerCaseInputStr)
+                folder.path.toLowerCase().includes(lowerCaseInputStr)
             ) {
                 folders.push(folder);
             }
@@ -28,8 +33,8 @@ export default class extends TextInputSuggest<TFolder> {
     }
 
     selectSuggestion(file: TFolder): void {
-        this.inputEl.value = file.path;
-        this.inputEl.trigger("input");
+        this.textInputEl.value = file.path;
+        this.textInputEl.trigger("input");
         this.close();
     }
 }
