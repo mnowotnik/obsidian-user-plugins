@@ -8,7 +8,7 @@ import {
     UserPluginsCommandPalette,
 } from "./palette/CommandPalette";
 
-const RIBBON_ICON = "terminal";
+const RIBBON_ICON = "plug-zap";
 
 export default class UserPlugins extends Plugin {
     api: Helpers;
