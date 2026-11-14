@@ -2,12 +2,13 @@ import { App, FuzzyMatch, FuzzySuggestModal } from "obsidian";
 
 class SuggesterModal<T> extends FuzzySuggestModal<T> {
     private resolved = false;
+    private labels: Map<T, string> | null = null;
     constructor(
         app: App,
         private textItems: string[] | ((item: T) => string),
         private items: T[],
-        private resolve: (value: unknown) => void,
-        private reject: (reason?: any) => void,
+        private resolve: (value: T) => void,
+        private reject: (reason?: unknown) => void,
         placeholder: string,
         limit?: number
     ) {
@@ -24,7 +25,17 @@ class SuggesterModal<T> extends FuzzySuggestModal<T> {
         if (this.textItems instanceof Function) {
             return this.textItems(item);
         }
-        return this.textItems[this.items.indexOf(item)] || "Undefined";
+        // fuzzy search calls this for every item on every keystroke,
+        // so build the item -> label lookup once instead of using indexOf
+        if (!this.labels) {
+            const textItems = this.textItems;
+            const labels = new Map<T, string>();
+            this.items.forEach((it, idx) => {
+                if (!labels.has(it)) labels.set(it, textItems[idx]);
+            });
+            this.labels = labels;
+        }
+        return this.labels.get(item) || "Undefined";
     }
 
     onChooseItem(item: T, evt: MouseEvent | KeyboardEvent) {
@@ -60,8 +71,8 @@ export async function suggest<T>(
     items: T[],
     placeholder: string,
     limit?: number
-) {
-    return new Promise((resolve, reject) => {
+): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
         new SuggesterModal(
             app,
             itemLabels,

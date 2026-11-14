@@ -97,7 +97,7 @@ You have access to [Helper API](#helper-api) by getting `obsidian-user-plugins` 
 ### Module type
 
 A JavaScript module that exports at least an `async onload(plugin): void` method and
-optionally an `async onnunload(): void` method. It has access to the global function
+optionally an `async onunload(plugin): void` method. It has access to `module`, `exports` and the global function
 `require` to get the `obsidian` module.
 The `plugin` parameter is an instance of `obsidian-user-plugins` with the [Helper API](#helper-api). 
 

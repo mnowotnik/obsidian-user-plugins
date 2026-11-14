@@ -21,7 +21,7 @@ export class Helpers {
         return suggest(this.app, itemLabels, items, placeholder || "", limit);
     }
 
-    notify(message: string, time: number = 5000) {
+    notify(message: string, time = 5000) {
         new Notice(message, time);
     }
 
@@ -43,14 +43,13 @@ export class Helpers {
         } = {}
     ) {
         let leaf: WorkspaceLeaf;
+        const paneType =
+            params.paneType ?? (params.openInNewTab ? "tab" : undefined);
 
-        if (params.paneType === "split") {
-            leaf = this.app.workspace.getLeaf(
-                params.paneType,
-                params.direction
-            );
+        if (paneType === "split") {
+            leaf = this.app.workspace.getLeaf(paneType, params.direction);
         } else {
-            leaf = this.app.workspace.getLeaf(params.paneType);
+            leaf = this.app.workspace.getLeaf(paneType);
         }
 
         if (params.mode) {

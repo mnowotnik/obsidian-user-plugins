@@ -14,18 +14,23 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
     snippets: [""],
     scriptsFolder: "",
-    enabledScripts: [""],
+    enabledScripts: [],
     ribbonIconEnabled: true,
 };
 
 export class SettingsManager {
     settings: Settings;
-    constructor(private plugin: UserPlugins, pluginData: any) {
-        this.loadSettings(pluginData);
-    }
-
-    private async loadSettings(pluginData: any) {
-        this.settings = Object.assign({}, DEFAULT_SETTINGS, pluginData);
+    constructor(private plugin: UserPlugins, pluginData: Partial<Settings>) {
+        // copy the default arrays so mutating settings never touches DEFAULT_SETTINGS
+        this.settings = Object.assign(
+            {},
+            DEFAULT_SETTINGS,
+            {
+                snippets: [...DEFAULT_SETTINGS.snippets],
+                enabledScripts: [...DEFAULT_SETTINGS.enabledScripts],
+            },
+            pluginData
+        );
     }
 
     async saveSettings() {
@@ -68,7 +73,7 @@ export class SettingTab extends PluginSettingTab {
                 .setName("No user scripts folder set")
                 .addExtraButton((extra) => {
                     extra
-                        .setIcon("sync")
+                        .setIcon("refresh-cw")
                         .setTooltip("Refresh")
                         .onClick(() => {
                             this.display();
@@ -104,7 +109,7 @@ export class SettingTab extends PluginSettingTab {
 
         new Setting(this.containerEl).setName(name).addExtraButton((extra) => {
             extra
-                .setIcon("sync")
+                .setIcon("refresh-cw")
                 .setTooltip("Refresh")
                 .onClick(() => {
                     this.display();
@@ -156,19 +161,17 @@ export class SettingTab extends PluginSettingTab {
     }
 
     addSnippetsSetting(): void {
-        const { containerEl } = this;
-        containerEl.createEl("h2", { text: "Snippets" });
+        new Setting(this.containerEl).setName("Snippets").setHeading();
 
         const scripts = this.settingsManager.settings.snippets;
-        this.settingsManager.settings.snippets.forEach((_, idx) => {
+        scripts.forEach((_, idx) => {
             const setting = new Setting(this.containerEl)
                 .addExtraButton((extra) => {
                     extra
-                        .setIcon("right-arrow")
+                        .setIcon("play")
                         .setTooltip("Run snippet")
                         .onClick(() => {
-                            const script = scripts[idx];
-                            this.cjsModuleRunner.runSnippet(script, idx);
+                            this.cjsModuleRunner.runSnippet(scripts[idx], idx);
                         });
                 })
                 .addTextArea((text) => {
@@ -176,16 +179,8 @@ export class SettingTab extends PluginSettingTab {
                         .setPlaceholder("User script")
                         .setValue(scripts[idx])
                         .onChange((new_script) => {
-                            const script = scripts[idx];
-                            const index =
-                                this.settingsManager.settings.snippets.indexOf(
-                                    script
-                                );
-                            if (index > -1) {
-                                this.settingsManager.settings.snippets[index] =
-                                    new_script;
-                                this.settingsManager.saveSettings();
-                            }
+                            scripts[idx] = new_script;
+                            this.settingsManager.saveSettings();
                         });
 
                     t.inputEl.setAttr("rows", 5);
@@ -194,22 +189,12 @@ export class SettingTab extends PluginSettingTab {
                 })
                 .addExtraButton((extra) => {
                     extra
-                        .setIcon("cross")
+                        .setIcon("x")
                         .setTooltip("Delete")
                         .onClick(() => {
-                            const script = scripts[idx];
-                            const index =
-                                this.settingsManager.settings.snippets.indexOf(
-                                    script
-                                );
-                            if (index > -1) {
-                                this.settingsManager.settings.snippets.splice(
-                                    index,
-                                    1
-                                );
-                                this.settingsManager.saveSettings();
-                                this.display();
-                            }
+                            scripts.splice(idx, 1);
+                            this.settingsManager.saveSettings();
+                            this.display();
                         });
                 });
             setting.infoEl.remove();
@@ -228,7 +213,7 @@ export class SettingTab extends PluginSettingTab {
     }
 
     addGeneralSettings(): void {
-        this.containerEl.createEl("h2", { text: "General" });
+        new Setting(this.containerEl).setName("General").setHeading();
         new Setting(this.containerEl)
             .setName("Ribbon button")
             .setDesc(
@@ -246,7 +231,7 @@ export class SettingTab extends PluginSettingTab {
     }
 
     addScriptFolderSetting(): void {
-        this.containerEl.createEl("h2", { text: "Scripts" });
+        new Setting(this.containerEl).setName("Scripts").setHeading();
         new Setting(this.containerEl)
             .setName("Scripts folder location")
             .setDesc("Files in this folder can be run on Obsidian startup")
