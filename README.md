@@ -112,6 +112,18 @@ You can also access [Helper API](#helper-api) via the `plugin.api` object.
 
 See [example](./examples/js-snippet/snippet.js).
 
+# Command palette
+
+User Plugins has its own command palette, similar to the one in BRAT. It lists only
+the commands that your scripts and snippets register with `plugin.addCommand`
+(plus a shortcut to this plugin's settings), so you can find them without
+looking through every command in the vault.
+
+Open it with:
+
+- the ribbon button (you can turn it off in settings under **General → Ribbon button**), or
+- the `User Plugins: Open command palette` command, which you can bind to a hotkey.
+
 # Helper API
 
 This plugin exposes an `api` object with handy methods. Check them out [here](./src/helpers/Helpers.ts).

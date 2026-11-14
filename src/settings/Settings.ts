@@ -8,12 +8,14 @@ export interface Settings {
     snippets: Array<string>;
     scriptsFolder: string;
     enabledScripts: Array<string>;
+    ribbonIconEnabled: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
     snippets: [""],
     scriptsFolder: "",
     enabledScripts: [""],
+    ribbonIconEnabled: true,
 };
 
 export class SettingsManager {
@@ -41,9 +43,11 @@ interface Args {
 export class SettingTab extends PluginSettingTab {
     cjsModuleRunner: CjsModuleLoader;
     settingsManager: SettingsManager;
+    private userPlugins: UserPlugins;
 
     constructor({ app, plugin, settingsManager, cjsModuleRunner }: Args) {
         super(app, plugin);
+        this.userPlugins = plugin;
         this.cjsModuleRunner = cjsModuleRunner;
         this.settingsManager = settingsManager;
     }
@@ -52,6 +56,7 @@ export class SettingTab extends PluginSettingTab {
         const { containerEl } = this;
 
         containerEl.empty();
+        this.addGeneralSettings();
         this.addScriptFolderSetting();
         this.addUserScriptsListSetting();
         this.addSnippetsSetting();
@@ -220,6 +225,24 @@ export class SettingTab extends PluginSettingTab {
                 });
         });
         setting.infoEl.remove();
+    }
+
+    addGeneralSettings(): void {
+        this.containerEl.createEl("h2", { text: "General" });
+        new Setting(this.containerEl)
+            .setName("Ribbon button")
+            .setDesc(
+                "Show a ribbon button that opens a command palette with commands registered by your scripts and snippets"
+            )
+            .addToggle((cb) => {
+                cb.setValue(
+                    this.settingsManager.settings.ribbonIconEnabled
+                ).onChange(async (enabled) => {
+                    this.settingsManager.settings.ribbonIconEnabled = enabled;
+                    this.userPlugins.setRibbonIcon(enabled);
+                    await this.settingsManager.saveSettings();
+                });
+            });
     }
 
     addScriptFolderSetting(): void {
