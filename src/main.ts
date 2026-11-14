@@ -38,6 +38,16 @@ export default class UserPlugins extends Plugin {
         this.helpers = this.api;
         this.importer = new Importer(this.app);
         this.register(() => this.importer.unload());
+        this.registerEvent(
+            this.app.workspace.on("window-open", (_, win) =>
+                this.importer.windowOpened(win.document)
+            )
+        );
+        this.registerEvent(
+            this.app.workspace.on("window-close", (_, win) =>
+                this.importer.windowClosed(win.document)
+            )
+        );
         this.addSettingTab(
             new SettingTab({
                 settingsManager: this.settingsManager,

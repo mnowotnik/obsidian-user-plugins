@@ -12,10 +12,19 @@ export interface ImportOptions {
     fresh?: boolean;
 }
 
-/** Returned for CSS imports: the injected <style> element. */
+/** Returned for CSS imports. */
 export interface StyleHandle {
+    /** The <style> element in the main window. */
     el: HTMLStyleElement;
+    /** Removes the style from every window. */
     remove(): void;
+}
+
+/** An imported stylesheet, present in every open window. */
+interface Sheet {
+    css: string;
+    source: string;
+    els: Map<Document, HTMLStyleElement>;
 }
 
 const URL_RE = /^https?:\/\//i;
@@ -56,9 +65,22 @@ async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
  */
 export class Importer {
     private cache = new Map<string, Promise<unknown>>();
-    private styles = new Set<HTMLStyleElement>();
+    private sheets = new Set<Sheet>();
+    private popouts = new Set<Document>();
 
     constructor(private app: App) {}
+
+    /** Call on the workspace "window-open" event. */
+    windowOpened(doc: Document) {
+        this.popouts.add(doc);
+        this.sheets.forEach((sheet) => this.addTo(sheet, doc));
+    }
+
+    /** Call on the workspace "window-close" event. */
+    windowClosed(doc: Document) {
+        this.popouts.delete(doc);
+        this.sheets.forEach((sheet) => sheet.els.delete(doc));
+    }
 
     import(source: string, options: ImportOptions = {}): Promise<unknown> {
         let type: ImportType;
@@ -83,8 +105,8 @@ export class Importer {
 
     /** Removes injected styles and forgets everything loaded. */
     unload() {
-        this.styles.forEach((el) => el.remove());
-        this.styles.clear();
+        this.sheets.forEach((sheet) => sheet.els.forEach((el) => el.remove()));
+        this.sheets.clear();
         this.cache.clear();
     }
 
@@ -137,15 +159,35 @@ export class Importer {
         }
     }
 
+    /** The main window plus every popout window that is open. */
+    private openDocuments(): Set<Document> {
+        const docs = new Set<Document>([document, ...this.popouts]);
+        // popouts opened before this plugin loaded: each one holds a tab
+        this.app.workspace.iterateAllLeaves((leaf) => {
+            docs.add(leaf.view.containerEl.ownerDocument);
+        });
+        return docs;
+    }
+
+    private addTo(sheet: Sheet, doc: Document) {
+        if (sheet.els.has(doc)) return;
+        const el = doc.createElement("style");
+        el.textContent = sheet.css;
+        el.dataset.userPluginsSource = sheet.source;
+        doc.head.appendChild(el);
+        sheet.els.set(doc, el);
+    }
+
     private injectCss(css: string, source: string, key: string): StyleHandle {
-        const el = document.head.createEl("style", { text: css });
-        el.dataset.userPluginsSource = source;
-        this.styles.add(el);
+        const sheet: Sheet = { css, source, els: new Map() };
+        this.openDocuments().forEach((doc) => this.addTo(sheet, doc));
+        this.sheets.add(sheet);
         return {
-            el,
+            el: sheet.els.get(document) as HTMLStyleElement,
             remove: () => {
-                el.remove();
-                this.styles.delete(el);
+                sheet.els.forEach((el) => el.remove());
+                sheet.els.clear();
+                this.sheets.delete(sheet);
                 this.cache.delete(key);
             },
         };

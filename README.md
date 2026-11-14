@@ -137,7 +137,8 @@ const lib = await plugin.import("Scripts/vendor/lib.js", { type: "cjs" });
 - Each source is loaded once and shared between scripts. Pass `fresh: true` to load it again.
 - Imported ES modules can't use relative `import` statements, because they're loaded from
   a blob URL. Use self-contained (bundled) files, or call `plugin.import` again for dependencies.
-- Styles are added to the main window only, and are removed when User Plugins unloads.
+- Styles are added to every window, including popout windows opened later, and are removed
+  when User Plugins unloads.
 
 From a plugin-type script, use `this.app.plugins.getPlugin("obsidian-user-plugins").import(...)`.
 
