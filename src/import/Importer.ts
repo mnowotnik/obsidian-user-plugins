@@ -48,10 +48,6 @@ interface Loaded {
     readonly sha256: string;
 }
 
-interface CacheEntry {
-    readonly loading: Promise<Loaded>;
-}
-
 const URL_RE = /^https?:\/\//i;
 
 function extensionOf(source: string): string {
@@ -136,9 +132,13 @@ let nextSheetId = 0;
  * checking a SHA-256 hash first. Each source is loaded once and shared.
  */
 export class Importer {
-    private readonly cache = new Map<string, CacheEntry>();
-    /** The newest load started for each key; older ones never replace it. */
-    private readonly latest = new Map<string, Promise<Loaded>>();
+    /** What a plain (non-fresh) import of each key returns. */
+    private readonly cache = new Map<string, Promise<Loaded>>();
+    /**
+     * The last load queued for each key. Loads of one key run one at a time,
+     * in the order they were started, so the newest one is applied last.
+     */
+    private readonly queue = new Map<string, Promise<Loaded>>();
     /** The current stylesheet for each CSS cache key. */
     private readonly sheets = new Map<string, Sheet>();
     private readonly popouts = new Set<Document>();
@@ -180,13 +180,14 @@ export class Importer {
         }
         const { key } = request;
         const cached = this.cache.get(key);
-        const loading =
-            cached && !request.fresh ? cached.loading : this.start(request);
+        const loading = cached && !request.fresh ? cached : this.start(request);
         return this.logged(
             loading.then((loaded) => {
-                // a cached file may have been loaded without (or with another) hash
+                // a shared load may have been started without (or with another) hash
                 if (request.sha256 && loaded.sha256 !== request.sha256) {
-                    throw integrityError(request.source, loaded.sha256);
+                    throw new Error(
+                        `${request.source} was already loaded and doesn't match the given sha256 (it is ${loaded.sha256})`
+                    );
                 }
                 return loaded.value;
             }),
@@ -194,25 +195,34 @@ export class Importer {
         );
     }
 
-    /** Starts loading and keeps the cache pointing at the newest load. */
+    /** Queues a load after any load of the same key, and updates the cache. */
     private start(request: ImportRequest): Promise<Loaded> {
         const { key } = request;
-        const loading = this.load(request, this.latest.get(key));
-        this.latest.set(key, loading);
+        const previous = this.queue.get(key);
+        const loading = previous
+            ? previous.then(
+                  () => this.load(request),
+                  () => this.load(request)
+              )
+            : this.load(request);
+        this.queue.set(key, loading);
         // a fresh load replaces the cached one only once it succeeds
-        if (!this.cache.has(key)) this.cache.set(key, { loading });
+        if (!this.cache.has(key)) this.cache.set(key, loading);
         loading.then(
             () => {
-                if (!this.disposed && this.latest.get(key) === loading) {
-                    this.cache.set(key, { loading });
-                }
+                if (!this.disposed) this.cache.set(key, loading);
+                if (this.queue.get(key) === loading) this.queue.delete(key);
             },
             () => {
-                // don't cache failures, so fixing the file and retrying works
-                if (this.cache.get(key)?.loading === loading) {
-                    this.cache.delete(key);
+                const newest = this.queue.get(key);
+                if (newest === loading) this.queue.delete(key);
+                if (this.cache.get(key) === loading) {
+                    // hand plain imports to a newer queued load, if any, so the
+                    // file isn't loaded a second time; otherwise forget the
+                    // failure, so fixing the file and retrying works
+                    if (newest && newest !== loading) this.cache.set(key, newest);
+                    else this.cache.delete(key);
                 }
-                if (this.latest.get(key) === loading) this.latest.delete(key);
             }
         );
         return loading;
@@ -233,7 +243,7 @@ export class Importer {
         this.sheets.forEach((sheet) => this.removeSheet(sheet));
         this.sheets.clear();
         this.cache.clear();
-        this.latest.clear();
+        this.queue.clear();
         this.popouts.clear();
     }
 
@@ -243,22 +253,14 @@ export class Importer {
         }
     }
 
-    /**
-     * Reads, checks and evaluates a file. `previous` is the last load started
-     * for the same key: evaluation waits for it, so loads of one file take
-     * effect in the order they were started and the newest is applied last.
-     */
-    private async load(
-        request: ImportRequest,
-        previous?: Promise<Loaded>
-    ): Promise<Loaded> {
+    /** Reads, checks and evaluates a file. */
+    private async load(request: ImportRequest): Promise<Loaded> {
         const { source, type } = request;
         const bytes = await this.read(source);
         const sha256 = await sha256Hex(bytes);
         if (request.sha256 && sha256 !== request.sha256) {
             throw integrityError(source, sha256);
         }
-        await previous?.catch(() => undefined);
         // the plugin may have been unloaded while reading
         this.throwIfDisposed();
         return { value: await this.evaluate(type, bytes, request), sha256 };

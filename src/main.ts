@@ -42,6 +42,7 @@ export default class UserPlugins extends Plugin {
         this.api = new Helpers(this.app);
         this.helpers = this.api;
         this.importer = new Importer(this.app);
+        // bind keeps the method's overloads; an arrow function can't satisfy them
         this.import = this.importer.import.bind(this.importer);
         this.registerEvent(
             this.app.workspace.on("window-open", (_, win) =>
@@ -93,8 +94,11 @@ export default class UserPlugins extends Plugin {
     }
 
     async onunload() {
-        await this.commonJsModuleLoader.onunload();
-        // after the scripts' own onunload, so they can still use plugin.import
-        this.importer.unload();
+        try {
+            await this.commonJsModuleLoader.onunload();
+        } finally {
+            // after the scripts' own onunload, so they can still use plugin.import
+            this.importer.unload();
+        }
     }
 }
