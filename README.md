@@ -132,10 +132,11 @@ const lib = await plugin.import("Scripts/vendor/lib.js", { type: "cjs" });
 
 - The file type comes from the extension: `.js`/`.mjs` are ES modules, `.cjs` is CommonJS
   and `.css` is a stylesheet. Use `type: "esm" | "cjs" | "css"` to override it.
-- `sha256` (optional): the file's SHA-256 in hex. If the file doesn't match, it isn't
-  loaded and the promise rejects. Recommended for URLs, so a changed file never runs.
-- Each source is loaded once and shared between scripts. Pass `fresh: true` to load it again;
-  for CSS, the new version replaces the old one once it has loaded.
+- `sha256` (optional): the file's SHA-256 as 64 hex characters. If the file doesn't match,
+  it isn't loaded and the promise rejects. Recommended for URLs, so a changed file never runs.
+- Each source is loaded once per type and shared between scripts, whether or not a call passes
+  `sha256` (a hash is checked against the bytes that were loaded). Pass `fresh: true` to load it
+  again; the newest load then replaces the old one once it succeeds (for CSS, the old style is removed).
 - Failed imports are also logged to the console, so you see them even without `await`.
 - Imported ES modules can't use relative `import` statements, because they're loaded from
   a blob URL. Use self-contained (bundled) files, or call `plugin.import` again for dependencies.

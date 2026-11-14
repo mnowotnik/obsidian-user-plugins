@@ -32,11 +32,24 @@ interface Sheet {
 }
 
 /** A validated, normalized import call. */
-interface Request {
+interface ImportRequest {
     readonly source: string;
     readonly type: ImportType;
+    /** Expected hash (lower-case hex), or "" for none. */
     readonly sha256: string;
+    readonly fresh: boolean;
+    /** Cache key: one entry per type and source. */
     readonly key: string;
+}
+
+/** A loaded file: what import() resolves to, plus the hash of its bytes. */
+interface Loaded {
+    readonly value: unknown;
+    readonly sha256: string;
+}
+
+interface CacheEntry {
+    readonly loading: Promise<Loaded>;
 }
 
 const URL_RE = /^https?:\/\//i;
@@ -64,24 +77,39 @@ function typeOf(source: string): ImportType {
     }
 }
 
-/** Validates input (which often comes from plain JS) into a Request. */
-function toRequest(source: unknown, options: ImportOptions): Request {
+const SHA256_RE = /^[0-9a-f]{64}$/;
+
+/** Validates input (which often comes from plain JS) into an ImportRequest. */
+function toRequest(source: unknown, options: unknown): ImportRequest {
     if (typeof source !== "string" || !source) {
         throw new Error("plugin.import: source must be a vault path or URL");
     }
-    if (options.type !== undefined && !IMPORT_TYPES.includes(options.type)) {
+    if (options != null && typeof options !== "object") {
+        throw new Error("plugin.import: options must be an object");
+    }
+    const { type, sha256, fresh } = (options ?? {}) as Record<string, unknown>;
+    if (type != null && !IMPORT_TYPES.includes(type as ImportType)) {
         throw new Error(
-            `plugin.import: unknown type "${options.type}"; use "esm", "cjs" or "css"`
+            `plugin.import: unknown type "${type}"; use "esm", "cjs" or "css"`
         );
     }
-    const type = options.type ?? typeOf(source);
+    let hash = "";
+    if (sha256 != null) {
+        hash = typeof sha256 === "string" ? sha256.trim().toLowerCase() : "";
+        if (!SHA256_RE.test(hash)) {
+            throw new Error(
+                "plugin.import: sha256 must be 64 hex characters (not an SRI \"sha256-...\" value)"
+            );
+        }
+    }
+    const resolvedType = (type as ImportType | null) ?? typeOf(source);
     const normalized = URL_RE.test(source) ? source : normalizePath(source);
-    const sha256 = (options.sha256 ?? "").trim().toLowerCase();
     return {
         source: normalized,
-        type,
-        sha256,
-        key: `${type}\n${normalized}\n${sha256}`,
+        type: resolvedType,
+        sha256: hash,
+        fresh: Boolean(fresh),
+        key: `${resolvedType}\n${normalized}`,
     };
 }
 
@@ -92,6 +120,12 @@ async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
         .join("");
 }
 
+function integrityError(source: string, actual: string): Error {
+    return new Error(
+        `${source} failed its integrity check (sha256 ${actual}); not loading it`
+    );
+}
+
 let nextSheetId = 0;
 
 /**
@@ -99,7 +133,9 @@ let nextSheetId = 0;
  * checking a SHA-256 hash first. Each source is loaded once and shared.
  */
 export class Importer {
-    private readonly cache = new Map<string, Promise<unknown>>();
+    private readonly cache = new Map<string, CacheEntry>();
+    /** The newest load started for each key; older ones never replace it. */
+    private readonly latest = new Map<string, Promise<Loaded>>();
     /** The current stylesheet for each CSS cache key. */
     private readonly sheets = new Map<string, Sheet>();
     private readonly popouts = new Set<Document>();
@@ -128,36 +164,62 @@ export class Importer {
         source: `${string}.css`,
         options?: ImportOptions & { type?: "css" }
     ): Promise<StyleHandle>;
+    /** `T` is not checked at runtime; it only types the result for you. */
     import<T = unknown>(source: string, options?: ImportOptions): Promise<T>;
     import(source: string, options?: ImportOptions): Promise<unknown> {
-        let request: Request;
+        let request: ImportRequest;
         try {
             this.throwIfDisposed();
-            request = toRequest(source, options ?? {});
+            request = toRequest(source, options);
         } catch (e) {
-            return Promise.reject(e);
+            return this.logged(Promise.reject(e), String(source));
         }
         const { key } = request;
         const cached = this.cache.get(key);
-        if (cached && !options?.fresh) return cached;
+        const loading =
+            cached && !request.fresh ? cached.loading : this.start(request);
+        return this.logged(
+            loading.then((loaded) => {
+                // a cached file may have been loaded without (or with another) hash
+                if (request.sha256 && loaded.sha256 !== request.sha256) {
+                    throw integrityError(request.source, loaded.sha256);
+                }
+                return loaded.value;
+            }),
+            request.source
+        );
+    }
 
+    /** Starts loading and keeps the cache pointing at the newest load. */
+    private start(request: ImportRequest): Promise<Loaded> {
+        const { key } = request;
         const loading = this.load(request);
-        // a fresh load replaces a cached one only once it succeeds
-        if (!cached) this.cache.set(key, loading);
+        this.latest.set(key, loading);
+        // a fresh load replaces the cached one only once it succeeds
+        if (!this.cache.has(key)) this.cache.set(key, { loading });
         loading.then(
             () => {
-                if (!this.disposed) this.cache.set(key, loading);
+                if (!this.disposed && this.latest.get(key) === loading) {
+                    this.cache.set(key, { loading });
+                }
             },
-            (e) => {
+            () => {
                 // don't cache failures, so fixing the file and retrying works
-                if (this.cache.get(key) === loading) this.cache.delete(key);
-                logScriptError(
-                    `import of ${request.source} failed: ${errorMessage(e)}`,
-                    e
-                );
+                if (this.cache.get(key)?.loading === loading) {
+                    this.cache.delete(key);
+                }
             }
         );
         return loading;
+    }
+
+    /** Logs a failed import, so calls without await aren't silent. */
+    private logged<T>(promise: Promise<T>, source: string): Promise<T> {
+        promise.catch((e) => {
+            if (this.disposed) return; // unloading, not a script error
+            logScriptError(`import of ${source} failed: ${errorMessage(e)}`, e);
+        });
+        return promise;
     }
 
     /** Removes injected styles and forgets everything loaded. */
@@ -166,6 +228,7 @@ export class Importer {
         this.sheets.forEach((sheet) => this.removeSheet(sheet));
         this.sheets.clear();
         this.cache.clear();
+        this.latest.clear();
         this.popouts.clear();
     }
 
@@ -175,24 +238,28 @@ export class Importer {
         }
     }
 
-    private async load(request: Request): Promise<unknown> {
-        const { source, type, sha256 } = request;
+    private async load(request: ImportRequest): Promise<Loaded> {
+        const { source, type } = request;
         const bytes = await this.read(source);
-        if (sha256) {
-            const actual = await sha256Hex(bytes);
-            if (actual !== sha256) {
-                throw new Error(
-                    `${source} failed its integrity check (sha256 ${actual}); not loading it`
-                );
-            }
+        const sha256 = await sha256Hex(bytes);
+        if (request.sha256 && sha256 !== request.sha256) {
+            throw integrityError(source, sha256);
         }
         // the plugin may have been unloaded while reading
         this.throwIfDisposed();
+        return { value: await this.evaluate(type, bytes, request), sha256 };
+    }
+
+    private evaluate(
+        type: ImportType,
+        bytes: ArrayBuffer,
+        request: ImportRequest
+    ): unknown {
         switch (type) {
             case "esm":
                 return this.importEsm(bytes);
             case "cjs":
-                return evaluateCjs(new TextDecoder().decode(bytes), source)
+                return evaluateCjs(new TextDecoder().decode(bytes), request.source)
                     .exports;
             case "css":
                 return this.injectCss(new TextDecoder().decode(bytes), request);
@@ -258,7 +325,7 @@ export class Importer {
         sheet.els.clear();
     }
 
-    private injectCss(css: string, request: Request): StyleHandle {
+    private injectCss(css: string, request: ImportRequest): StyleHandle {
         const { key, source } = request;
         const sheet: Sheet = {
             id: String(nextSheetId++),
