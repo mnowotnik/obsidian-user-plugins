@@ -1,6 +1,6 @@
 # Sample Plugin
 
-This is just cloned [Obsidian sample plugin](https://github.com/obsidianmd/obsidian-sample-plugin) with [main.ts](./main.ts) modified.
+Based on the [Obsidian sample plugin](https://github.com/obsidianmd/obsidian-sample-plugin) build setup; only [main.ts](./main.ts) is plugin code.
 
 Compile it with
 

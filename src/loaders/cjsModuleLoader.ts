@@ -1,8 +1,8 @@
 import { App, Notice, Plugin, PluginManifest, TFile } from "obsidian";
 import UserPlugins from "src/main";
 import { Settings } from "src/settings/Settings";
-import { UserPluginError } from "src/settings/utils/Error";
-import { resolve_tfile } from "src/settings/utils/Utils";
+import { UserPluginError } from "src/utils/Error";
+import { getFile } from "src/utils/vault";
 import { errorMessage, logError, logScriptError } from "src/utils/log";
 import { Loader } from "./loader";
 
@@ -68,7 +68,7 @@ export default class CjsModuleLoader implements Loader {
         }
         let file: TFile;
         try {
-            file = resolve_tfile(this.app, path);
+            file = getFile(this.app, path);
         } catch (e) {
             if (e instanceof UserPluginError) {
                 logError(`Error resolving file ${path}: ${e.message}`);

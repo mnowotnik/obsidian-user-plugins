@@ -2,7 +2,7 @@ import { App, Notice, PluginSettingTab, Setting, TFile } from "obsidian";
 import CjsModuleLoader from "src/loaders/cjsModuleLoader";
 import UserPlugins from "../main";
 import FolderSuggester from "./suggesters/FolderSuggester";
-import { get_tfiles_from_folder } from "./utils/Utils";
+import { getFilesInFolder } from "src/utils/vault";
 
 export interface Settings {
     snippets: Array<string>;
@@ -84,7 +84,7 @@ export class SettingTab extends PluginSettingTab {
         let name: string;
         let files: Array<TFile> = [];
         try {
-            files = get_tfiles_from_folder(
+            files = getFilesInFolder(
                 this.app,
                 this.settingsManager.settings.scriptsFolder
             );
