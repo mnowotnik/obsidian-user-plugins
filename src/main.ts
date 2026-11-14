@@ -32,8 +32,8 @@ export default class UserPlugins extends Plugin {
         );
 
         this.passedModules = { obsidian };
-        this.helpers = new Helpers(this.app);
         this.api = new Helpers(this.app);
+        this.helpers = this.api;
         this.addSettingTab(
             new SettingTab({
                 settingsManager: this.settingsManager,
@@ -50,16 +50,10 @@ export default class UserPlugins extends Plugin {
         });
         this.setRibbonIcon(this.settingsManager.settings.ribbonIconEnabled);
 
-        // wait for vault files to load
-        // FIXME maybe there's a better hook
-        this.app.workspace.onLayoutReady(async () => {
-            try {
-                await this.commonJsModuleLoader.onload();
-            } catch (e) {
-                Error.captureStackTrace(e);
-                this.logScriptError(`Failed with error: ${e.message}`, e);
-            }
-        });
+        // wait for vault files to load; the loader handles its own errors
+        this.app.workspace.onLayoutReady(() =>
+            this.commonJsModuleLoader.onload()
+        );
     }
 
     openCommandPalette() {
@@ -77,14 +71,6 @@ export default class UserPlugins extends Plugin {
             this.ribbonIconEl.remove();
             this.ribbonIconEl = null;
         }
-    }
-
-    private logScriptError(msg: string, error: Error) {
-        this.logError(`${msg}. stacktrace: ${error.stack}`);
-    }
-
-    private logError(msg: string) {
-        console.error(`[obsidian-user-plugins] ${msg}`);
     }
 
     async onunload() {
