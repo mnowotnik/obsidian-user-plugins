@@ -6,16 +6,16 @@ import { getFile } from "src/utils/vault";
 import { errorMessage, logError, logScriptError } from "src/utils/log";
 import { Loader } from "./loader";
 
-interface UserCjsModule {
-    exports: {
-        onload?: (plugin?: UserPlugins) => Promise<void>;
-        onunload?: (plugin?: UserPlugins) => Promise<void>;
-        default?: new (app: App, pluginManifest: PluginManifest) => Plugin;
-    };
+/** What a module-type user script exports. */
+interface UserModule {
+    onload?: (plugin?: UserPlugins) => Promise<void>;
+    onunload?: (plugin?: UserPlugins) => Promise<void>;
 }
 
-interface UserModule {
-    onunload: (plugin?: UserPlugins) => Promise<void>;
+interface UserCjsModule {
+    exports: UserModule & {
+        default?: new (app: App, pluginManifest: PluginManifest) => Plugin;
+    };
 }
 
 type UserModuleOrPlugin =
@@ -107,10 +107,7 @@ export default class CjsModuleLoader implements Loader {
                 if (exports.onunload) {
                     this.modulesWithUnload.push([
                         file.path,
-                        {
-                            type: "module",
-                            object: { onunload: exports.onunload },
-                        },
+                        { type: "module", object: exports },
                     ]);
                 }
             } else if (exports?.default) {
@@ -167,7 +164,7 @@ export default class CjsModuleLoader implements Loader {
             if (userModule.type === "plugin") {
                 await userModule.object.onunload();
             } else {
-                await userModule.object.onunload(this.plugin);
+                await userModule.object.onunload?.(this.plugin);
             }
         } catch (e) {
             logScriptError(
