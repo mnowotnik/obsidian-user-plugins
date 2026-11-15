@@ -1,12 +1,12 @@
 # Design: per-script settings
 
-Status: proposal for review. No code has been written yet.
+Status: decisions approved (see [Decisions](#decisions)). No code has been written yet.
 Roadmap item: "Custom configuration per script file" (`README.md:121`). The README
 currently warns that "Creating settings is especially not supported" (`README.md:15`).
 
-## Decisions needing your input
+## Decisions
 
-Each item has a recommendation. Approve it or redirect.
+All approved.
 
 1. **How scripts declare settings: a declarative `settings` export only (v1).** The host
    renders, validates and stores the values. An imperative `renderSettings(containerEl, ctx)`
@@ -16,9 +16,8 @@ Each item has a recommendation. Approve it or redirect.
    with the script on rename. They are kept, not deleted, when the script is deleted.
 3. **Secrets: a `secret` field type backed by Obsidian's `SecretStorage`**
    (`app.secretStorage`, since 1.11.4). `data.json` stores only the secret's *name*.
-   Because `minAppVersion` is 1.7.2 (`manifest.json`), the host checks for the API at
-   runtime: on older Obsidian a secret field shows "requires Obsidian 1.11.4" and no
-   plain-text fallback is offered. The other option is to raise `minAppVersion` to 1.11.4.
+   **`minAppVersion` is raised from 1.7.2 to 1.11.4**, so no runtime feature detection
+   and no plain-text fallback are needed.
 4. **Plugin-class scripts: `this.loadData()` / `this.saveData()` redirected to the
    script's own storage.** Today they read and write the *host's* `data.json` (see
    [current behaviour](#current-behaviour-that-matters)). This is a behaviour change, and
@@ -26,12 +25,17 @@ Each item has a recommendation. Approve it or redirect.
 5. **Snippets are out of scope.** They have no stable identity and no export surface.
 6. **Scripts are never evaluated just to read their schema.** The settings UI appears only
    for a script that is enabled and has been evaluated. Values are kept while the script is disabled.
-7. **Export name: `settings`.** It is short and reads well, but an existing script might
-   already export something called `settings`. The mitigation is strict validation: an
-   invalid schema is logged and ignored, and never breaks loading. The alternative is the
-   less collision-prone `settingsSchema`.
+7. **Export name: `settings`.** An existing script might already export something called
+   `settings`; strict validation logs and ignores an invalid schema and never breaks loading.
 8. **Tests: add a zero-dependency harness** (`node:test` plus the existing `esbuild`).
    The repo has no tests today.
+9. **Key renames are not supported.** Keeping keys compatible across versions is the
+   script author's responsibility; a renamed key gets its default. No `aliases` or `migrate`.
+10. **The host implements `onExternalSettingsChange` in v1.** When sync changes
+    `data.json`, the host reloads its settings, fires script `onChange` listeners, and
+    applies changes to `enabledScripts` (loading or unloading scripts).
+11. **Author types ship as a copy-paste `.d.ts` in `examples/`**, not an npm package.
+12. **Missing-scripts section offers "Forget" only**, no "Reassign to…".
 
 ## Recommended design (summary)
 
@@ -209,24 +213,23 @@ already does for the arrays (`Settings.ts:24-31`).
   modal has a "Clear unused values" action.
 - If a field's type changes, the stored value fails validation and the script sees the
   default (see [Schema](#schema)).
-- Renaming a key is not supported in v1: the script sees the new key's default. An
-  optional `migrate(stored, ctx)` export is listed as a later stage and an open question.
+- Renaming a key is not supported: the script sees the new key's default. Keeping keys
+  compatible is the script author's responsibility (decision 9).
 
 ## Secrets
 
 `data.json` is plain text and is often synced or committed. A `secret` field never
 writes the secret itself there.
 
-- On Obsidian 1.11.4 or later, the field is rendered with Obsidian's `SecretComponent`
+- The field is rendered with Obsidian's `SecretComponent`
   (`obsidian.d.ts`: `class SecretComponent`, since 1.11.1). The user picks an existing
   entry in `app.secretStorage` or creates one. `values[key]` stores only the secret id,
   for example `"openai-key"`.
 - `ctx.settings.apiKey` resolves the id with `app.secretStorage.getSecret(id)` each time
   it is read, and returns `""` if no secret is set. `ctx.set()` refuses secret keys, and
   plugin-class `saveData` ignores them. Secrets are changed only through the UI.
-- On older Obsidian, the field is shown disabled with "requires Obsidian 1.11.4". There
-  is no localStorage fallback, because a second storage path for secrets is more code to
-  get right, and `README.md:19` already sets a "bleeding edge" expectation.
+- `minAppVersion` is 1.11.4 (decision 3), so the API is always present. There is no
+  localStorage or plain-text fallback.
 - The host never logs values of secret fields, including in validation errors.
 - Threat model, to be stated in the README: this protects secrets against leaking through
   `data.json`. It does **not** protect them against other scripts, which run with full
@@ -247,8 +250,7 @@ export interface ScriptContext<V extends Record<string, unknown> = Record<string
     /** Validates, persists (debounced), and notifies listeners. Rejects for
      *  unknown keys, invalid values and secret fields. */
     set<K extends keyof V>(key: K, value: V[K]): Promise<void>;
-    /** Called after a value changes (UI, ctx.set, or external data.json change in a
-     *  later stage). Returns an unsubscribe function. Cleared on unload. */
+    /** Called after a value changes (UI, ctx.set, or external data.json change). Returns an unsubscribe function. Cleared on unload. */
     onChange(cb: (settings: Readonly<V>, changedKeys: Array<keyof V>) => void): () => void;
 }
 ```
@@ -339,8 +341,7 @@ export default class MyPlugin extends Plugin {
 ```
 
 TypeScript authors have no package to import these types from. In stage 5 the types will
-be published as a copy-paste `.d.ts` in `examples/`. Shipping an npm types package is an
-open question.
+be published as a copy-paste `.d.ts` in `examples/` (decision 11).
 
 ### Snippets
 
@@ -381,9 +382,9 @@ Unchanged. See [Per script type](#per-script-type).
 - **Accidental `settings` export.** If a script already exports an unrelated `settings`,
   strict validation rejects it with a console message. The script loads as before. See
   decision 7.
-- **`minAppVersion`** is unchanged under the recommendation. Only the `secret` field and
-  `addComponent` (1.11.0) need newer Obsidian, and both are feature-detected. The text
-  field is the fallback renderer if `addComponent` is missing.
+- **`minAppVersion`** rises from 1.7.2 to 1.11.4 (decision 3), for `SecretStorage` and
+  `addComponent`. Users on older Obsidian stay on the previous release. Called out in
+  release notes; `versions.json` maps the new version to 1.11.4.
 
 ## Alternatives considered
 
@@ -400,19 +401,8 @@ Unchanged. See [Per script type](#per-script-type).
 
 ## Open questions
 
-1. Decisions 1–8 above.
-2. Should key renames be supported, through an optional `migrate(stored)` export or a
-   per-field `aliases: ["oldKey"]`? Leaning towards `aliases`, later, if asked for.
-3. Should the host implement `onExternalSettingsChange` itself, so that a `data.json`
-   changed by sync reloads the settings and fires script `onChange`? Today the host
-   ignores external changes entirely, including `enabledScripts`. Leaning towards yes, as
-   its own stage.
-4. Should the field types be published as an npm types package, or only as an example
-   `.d.ts`?
-5. Should snippets eventually get a stable id (for example a name) so they can have
+1. Should snippets eventually get a stable id (for example a name) so they can have
    settings? Not proposed here.
-6. Should the orphan section offer "Reassign to…" for renames made while the host was
-   not running, or is "Forget" enough?
 
 ## Implementation plan
 
@@ -420,14 +410,15 @@ Rough sizes are production lines of code, excluding tests.
 
 | Stage | Content | Size |
 |---|---|---|
-| 1. Core + storage | `scriptSettings` in `Settings` and the defaults copy. Pure module `src/scriptSettings/schema.ts` (schema validation, value coercion, merge with defaults, path re-keying; imports no `obsidian`). Vault `rename` handler re-keying `enabledScripts`, `scriptSettings` and `modulesWithUnload`. Debounced save with flush on unload. Test harness. | ~250 |
+| 1. Core + storage | Raise `minAppVersion` to 1.11.4. `scriptSettings` in `Settings` and the defaults copy. Pure module `src/scriptSettings/schema.ts` (schema validation, value coercion, merge with defaults, path re-keying; imports no `obsidian`). Vault `rename` handler re-keying `enabledScripts`, `scriptSettings` and `modulesWithUnload`. Debounced save with flush on unload. Test harness. | ~250 |
 | 2. Module scripts + UI | Schema capture after evaluation, `ScriptContext` (`settings`, `set`, `onChange`, dispose), `onload(plugin, ctx)`. Gear button, `ScriptSettingsModal` with the non-secret renderers, missing-scripts section. | ~400 |
-| 3. Secrets | `secret` field with `SecretComponent`/`SecretStorage`, feature detection, redaction in logs. Verify SecretStorage sync behaviour. | ~120 |
+| 3. Secrets | `secret` field with `SecretComponent`/`SecretStorage`, redaction in logs. Verify SecretStorage sync behaviour. | ~120 |
 | 4. Plugin-class scripts | `loadData`/`saveData` override, schema from `exports.settings`/`static settings`, `onExternalSettingsChange` dispatch. | ~80 |
-| 5. Docs + examples | `examples/js-module-settings/`, a plugin-class example, the `.d.ts` for authors. README: tick the roadmap item, replace the warning at `README.md:15`, document the secrets threat model and the `loadData` change. | docs |
-| Later (optional) | Imperative `renderSettings(containerEl, ctx)`, host `onExternalSettingsChange`, key `aliases`. | ~100 each |
+| 4b. External changes | Host `onExternalSettingsChange`: reload settings, fire script `onChange`, load/unload scripts whose `enabledScripts` entry changed. | ~100 |
+| 5. Docs + examples | `examples/js-module-settings/`, a plugin-class example, the `.d.ts` for authors. README: tick the roadmap item, replace the warning at `README.md:15`, document the secrets threat model, the `loadData` change and the new minimum Obsidian version. | docs |
+| Later (optional) | Imperative `renderSettings(containerEl, ctx)`. | ~100 |
 
-Each of stages 1–4 can ship as its own PR. Stage 1 ships no user-visible feature apart
+Each of stages 1–4b can ship as its own PR. Stage 1 ships no user-visible feature apart
 from the rename fix.
 
 ## Testing approach
@@ -459,6 +450,7 @@ pushes (`.github/workflows/release.yml`).
   - delete it and restore it
   - toggle it off and on
   - unload the host with a save pending
-  - use a secret field on Obsidian older and newer than 1.11.4
+  - use a secret field
+  - change a value and `enabledScripts` from another synced device
   - a plugin-class script round-tripping `loadData`/`saveData` without touching the
     host's snippets
