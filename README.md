@@ -112,47 +112,6 @@ You can also access [Helper API](#helper-api) via the `plugin.api` object.
 
 See [example](./examples/js-snippet/snippet.js).
 
-# Importing libraries and styles
-
-`await plugin.import(source, options?)` loads a JavaScript module or a CSS file,
-either from your vault or from an `http(s)://` URL. It works on desktop and mobile.
-
-```javascript
-// a vendored ES module in the vault; resolves to the module's exports
-const { default: CalHeatmap } = await plugin.import("Scripts/vendor/cal-heatmap.mjs");
-
-// a stylesheet from a URL, pinned to a hash; resolves to { el, remove() }
-await plugin.import("https://unpkg.com/cal-heatmap@4.2.4/dist/cal-heatmap.css", {
-    sha256: "<the file's SHA-256, 64 hex characters>",
-});
-
-// a CommonJS/UMD file; resolves to module.exports
-const lib = await plugin.import("Scripts/vendor/lib.js", { type: "cjs" });
-```
-
-- Options other than `sha256`, `type` and `fresh` are rejected, so a typo can't skip a hash check.
-- The file type comes from the extension: `.js`/`.mjs` are ES modules, `.cjs` is CommonJS
-  and `.css` is a stylesheet. Use `type: "esm" | "cjs" | "css"` to override it.
-- `sha256` (optional): the file's SHA-256 as 64 hex characters. If you pass the key, it must hold
-  a hash: `{ sha256: undefined }` is rejected, so a mistyped lookup can't skip the check. If the file doesn't match,
-  the promise rejects. When this call is the one that loads the file, a mismatching file never
-  runs; recommended for URLs. If another script already loaded the same file without a hash,
-  it has already run; pass `fresh: true` as well to be sure the checked version is what runs.
-  Calls that share one load also share its outcome, including a failed hash check.
-- Loads of the same file run one at a time, in the order they were started. A load that never
-  finishes (a request that hangs, or modules whose top-level code `await`s each other) blocks
-  later imports of that file until User Plugins is reloaded.
-- Each source is loaded once per type and shared between scripts, whether or not a call passes
-  `sha256` (a hash is checked against the bytes that were loaded). Pass `fresh: true` to load it
-  again; the newest load then replaces the old one once it succeeds (for CSS, the old style is removed).
-- Failed imports are also logged to the console, so you see them even without `await`.
-- Imported ES modules can't use relative `import` statements, because they're loaded from
-  a blob URL. Use self-contained (bundled) files, or call `plugin.import` again for dependencies.
-- Styles are added to every window, including popout windows opened later, and are removed
-  when User Plugins unloads (after your scripts' `onunload`, which get up to 5 seconds in total).
-
-From a plugin-type script, use `this.app.plugins.getPlugin("obsidian-user-plugins").import(...)`.
-
 # Command palette
 
 User Plugins has its own command palette, similar to the one in BRAT. It lists only
