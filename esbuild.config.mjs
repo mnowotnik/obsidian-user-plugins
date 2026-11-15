@@ -1,6 +1,11 @@
 import esbuild from "esbuild";
 import process from "process";
 import builtins from "builtin-modules";
+import { readFile } from "fs/promises";
+import { createRequire } from "module";
+import path from "path";
+
+const require = createRequire(import.meta.url);
 
 const banner =
 `/*
@@ -10,6 +15,28 @@ if you want to view the source, please visit the github repository of this plugi
 `;
 
 const prod = (process.argv[2] === "production");
+
+// `import text from "text:<file>"` bundles the file's contents as a string.
+// <file> is relative to the importing file, or a path inside a package.
+const textImport = {
+	name: "text-import",
+	setup(build) {
+		build.onResolve({ filter: /^text:/ }, (args) => {
+			const file = args.path.slice("text:".length);
+			return {
+				path: file.startsWith(".")
+					? path.resolve(args.resolveDir, file)
+					: require.resolve(file),
+				namespace: "text",
+			};
+		});
+		build.onLoad({ filter: /.*/, namespace: "text" }, async (args) => ({
+			contents: await readFile(args.path, "utf8"),
+			loader: "text",
+			watchFiles: [args.path],
+		}));
+	},
+};
 
 const context = await esbuild.context({
 	banner: {
@@ -39,6 +66,12 @@ const context = await esbuild.context({
 	treeShaking: true,
 	outfile: "main.js",
 	minify: prod,
+	plugins: [textImport],
+	define: {
+		OBSIDIAN_TYPINGS_VERSION: JSON.stringify(
+			require("obsidian/package.json").version
+		),
+	},
 });
 
 if (prod) {

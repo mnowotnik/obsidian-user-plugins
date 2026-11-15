@@ -1,4 +1,3 @@
-module.exports = {};
 const Plugin = require('obsidian').Plugin;
 module.exports.default = class MyPlugin extends Plugin {
     async onload() {

@@ -1,4 +1,11 @@
-import { App, Notice, PluginSettingTab, Setting, TFile } from "obsidian";
+import {
+    App,
+    ButtonComponent,
+    Notice,
+    PluginSettingTab,
+    Setting,
+    TFile,
+} from "obsidian";
 import CjsModuleLoader from "src/loaders/cjsModuleLoader";
 import UserPlugins from "../main";
 import FolderSuggester from "./suggesters/FolderSuggester";
@@ -242,7 +249,27 @@ export class SettingTab extends PluginSettingTab {
                     .onChange((newFolder) => {
                         this.settingsManager.settings.scriptsFolder = newFolder;
                         this.settingsManager.saveSettings();
+                        updateEditorSupport();
                     });
             });
+
+        let button: ButtonComponent;
+        const editorSupport = new Setting(this.containerEl)
+            .setName("Editor support")
+            .addButton((cb) => {
+                button = cb
+                    .setButtonText("Set up")
+                    .onClick(() => this.userPlugins.setUpEditorSupport());
+            });
+        const updateEditorSupport = () => {
+            const hasFolder = !!this.settingsManager.settings.scriptsFolder;
+            button.setDisabled(!hasFolder);
+            editorSupport.setDesc(
+                hasFolder
+                    ? "Write Obsidian and User Plugins type declarations (in a types subfolder) and a jsconfig.json into the scripts folder, for completion and type-checking in code editors such as VS Code. An existing jsconfig.json or tsconfig.json is left unchanged."
+                    : "Set a scripts folder first."
+            );
+        };
+        updateEditorSupport();
     }
 }
