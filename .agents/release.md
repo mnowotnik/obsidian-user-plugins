@@ -36,7 +36,8 @@ How a release goes out:
    ```
 
    The workflow fails if the tag doesn't match `manifest.json` or the tagged
-   commit isn't on `develop`.
+   commit isn't on `develop`. A tag with a `-` suffix is a dev build instead;
+   see [dev-build.md](dev-build.md).
 
 3. **Check the GitHub release.** It should exist and have all three files
    attached.
