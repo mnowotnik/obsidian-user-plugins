@@ -112,6 +112,57 @@ You can also access [Helper API](#helper-api) via the `plugin.api` object.
 
 See [example](./examples/js-snippet/snippet.js).
 
+## Editor support
+
+To get completion and type-checking for your scripts in a code editor such as
+VS Code, click **Set up** next to *Editor support* in the settings (or run the
+command *Set up editor support in the scripts folder*). It writes into your
+scripts folder:
+
+- `types/obsidian.d.ts`: the Obsidian API typings, from the `obsidian` package
+  this plugin was built with (its version and licence are in the file header)
+- `types/obsidian-user-plugins.d.ts`: types for this plugin: `UserPlugins` (the
+  `plugin` object, with `plugin.api` and `plugin.import`) and `UserModule` (what
+  a module script exports)
+- `types/obsidian-dependencies.d.ts`: stand-ins for packages the Obsidian
+  typings import from
+- `jsconfig.json`: tells the editor where those types are and to type-check the
+  JavaScript files in the folder
+
+No `package.json`, `npm install` or build step is needed; your scripts stay
+plain JavaScript. Open the scripts folder (or the vault) in the editor, then
+annotate scripts with JSDoc:
+
+```javascript
+// @ts-check
+const { Notice } = require("obsidian");
+
+/** @type {import("obsidian-user-plugins").UserModule} */
+module.exports = {
+    async onload(plugin) {
+        // plugin, plugin.api and plugin.import are typed here
+    },
+};
+```
+
+In a plugin-type script, `this.app.plugins.getPlugin("obsidian-user-plugins")`
+is typed too. `obsidian-user-plugins` only exists for types:
+`require("obsidian-user-plugins")` does not work at runtime.
+
+Running it again updates the files in `types/` (they belong to this plugin, so
+don't edit them). It never overwrites a file it didn't write: if `jsconfig.json`
+already exists, or the folder has a `tsconfig.json` (which editors use instead),
+it is left unchanged, and the settings it needs are printed to the developer
+console. The files are not scripts, so they don't appear in the list of scripts.
+
+Limits:
+
+- CodeMirror (`@codemirror/state`, `@codemirror/view`) and `moment` types are
+  `any`.
+- The typings match the Obsidian API version this plugin was built with, which
+  may be older or newer than your Obsidian app.
+- `jsconfig.json` sets `"strict": false`; change it if you want stricter checks.
+
 # Helper API
 
 This plugin exposes an `api` object with handy methods. Check them out [here](./src/helpers/Helpers.ts).

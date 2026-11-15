@@ -8,9 +8,9 @@ import { evaluateCjs } from "./evaluateCjs";
 import { Loader } from "./loader";
 
 /** What a module-type user script exports. */
-interface UserModule {
-    onload?: (plugin?: UserPlugins) => Promise<void>;
-    onunload?: (plugin?: UserPlugins) => Promise<void>;
+export interface UserModule {
+    onload?: (plugin: UserPlugins) => void | Promise<void>;
+    onunload?: (plugin: UserPlugins) => void | Promise<void>;
 }
 
 interface UserCjsModule {

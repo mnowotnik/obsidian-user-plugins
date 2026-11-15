@@ -1,4 +1,4 @@
-import { Plugin } from "obsidian";
+import { Notice, Plugin } from "obsidian";
 import CjsModuleLoader from "./loaders/cjsModuleLoader";
 import * as obsidian from "obsidian";
 import { SettingsManager, SettingTab } from "./settings/Settings";
@@ -8,6 +8,12 @@ import {
     PALETTE_COMMAND_ID,
     UserPluginsCommandPalette,
 } from "./palette/CommandPalette";
+import {
+    describeSetup,
+    JSCONFIG_CONTENT,
+    setUpEditorSupport,
+} from "./typings/setup";
+import { errorMessage, logError } from "./utils/log";
 
 const RIBBON_ICON = "plug-zap";
 const SCRIPT_UNLOAD_TIMEOUT_MS = 5000;
@@ -69,6 +75,11 @@ export default class UserPlugins extends Plugin {
             name: "Open command palette",
             callback: () => this.openCommandPalette(),
         });
+        this.addCommand({
+            id: "set-up-editor-support",
+            name: "Set up editor support in the scripts folder",
+            callback: () => this.setUpEditorSupport(),
+        });
         this.setRibbonIcon(this.settingsManager.settings.ribbonIconEnabled);
 
         // wait for vault files to load; the loader handles its own errors
@@ -79,6 +90,37 @@ export default class UserPlugins extends Plugin {
 
     openCommandPalette() {
         new UserPluginsCommandPalette(this.app, this).open();
+    }
+
+    /** Writes typings and a jsconfig.json for code editors into the scripts folder. */
+    async setUpEditorSupport() {
+        const folder = this.settingsManager.settings.scriptsFolder;
+        if (!folder) {
+            new Notice(
+                "obsidian-user-plugins: set a scripts folder in the settings first",
+                5000
+            );
+            return;
+        }
+        try {
+            const report = await setUpEditorSupport(this.app, folder);
+            if (report.skipped.length) {
+                console.info(
+                    "[obsidian-user-plugins] editor support: left unchanged:",
+                    report.skipped,
+                    "\nA jsconfig.json (or tsconfig.json) for the scripts folder needs these settings:\n" +
+                        JSCONFIG_CONTENT
+                );
+            }
+            new Notice(describeSetup(folder, report), 10000);
+        } catch (e) {
+            logError(`Setting up editor support failed: ${errorMessage(e)}`);
+            new Notice(
+                "obsidian-user-plugins: setting up editor support failed: " +
+                    errorMessage(e),
+                5000
+            );
+        }
     }
 
     setRibbonIcon(enabled: boolean) {

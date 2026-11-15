@@ -1,3 +1,6 @@
+// @ts-check
+// Types come from "Set up editor support" in the User Plugins settings.
+/** @type {import("obsidian-user-plugins").UserModule} */
 module.exports = {
     async onload(plugin) {
         plugin.addCommand({
