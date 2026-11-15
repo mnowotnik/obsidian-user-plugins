@@ -37,6 +37,25 @@ All approved.
 11. **Author types ship as a copy-paste `.d.ts` in `examples/`**, not an npm package.
 12. **Missing-scripts section offers "Forget" only**, no "Reassign to…".
 
+Decided after design review:
+
+13. **Enabled scripts whose file is missing are no longer pruned.** The path stays in
+    `enabledScripts`, the row is shown as "missing", and the script loads when its file
+    appears. This changes current behaviour (`Settings.ts:154-159`).
+14. **Secret values are non-enumerable.** They are read through lazy getters, so they do
+    not appear in spreads, `JSON.stringify`, `onChange` payloads or `loadData()` copies.
+15. **An open settings modal re-renders** when its script's values change externally.
+16. **Only values that differ from the current default are stored.** A value equal to the
+    default follows future default changes.
+17. **A loaded script moved out of the scripts folder is unloaded and disabled.** Its
+    values are kept as orphans under the old path.
+18. **On a rename collision, the renamed script's values win**; orphaned values at the
+    target path are discarded.
+19. **Legacy top-level keys are left alone.** Keys that plugin-class scripts wrote into
+    the host's `data.json` are kept untouched; release notes explain the change.
+20. **Large stored data only warns.** A console warning when one script's stored values
+    exceed 100 KB; no hard cap.
+
 ## Recommended design (summary)
 
 - A file script exports `settings`, a plain object that maps each key to a field spec
@@ -68,15 +87,17 @@ All approved.
 | Only `.js` files get a row/toggle | `src/settings/Settings.ts:125` |
 | Enabled paths not found in the folder are pruned when the tab renders, so a renamed script is silently disabled | `src/settings/Settings.ts:123-159` |
 | No vault `rename`/`delete` handling; the only registered events are window open/close | `src/main.ts:48-57` |
-| Toggle on → `runJsModule(path)` re-reads and re-evaluates the file; off → `runOnunload(path)`; the whole tab is re-rendered via `display()` | `src/settings/Settings.ts:138-144` |
+| Toggle on → `runJsModule(path)` re-reads and re-evaluates the file; off → `runOnunload(path)`; the whole tab is re-rendered via `display()` *before* the (un-awaited) load | `src/settings/Settings.ts:138-144` |
+| The loader and the tab hold the settings object by reference | `src/main.ts:37-40`, `src/loaders/cjsModuleLoader.ts:30`, `src/settings/Settings.ts:122` |
+| Loading a missing path raises a Notice | `src/loaders/cjsModuleLoader.ts:72-77` |
 | File evaluated with `module`, `exports`, `require` via `Function` | `src/loaders/evaluateCjs.ts:9-17`, `src/loaders/cjsModuleLoader.ts:84-85` |
 | Module type: `exports.onload(this.plugin)` (host instance), tracked for unload only if `onunload` exists | `src/loaders/cjsModuleLoader.ts:100-107` |
 | Plugin type: `new exports.default(this.app, this.plugin.manifest)`, i.e. **the host's manifest**; then `onload()` called directly | `src/loaders/cjsModuleLoader.ts:108-117` |
 | Plugin type unload calls `onunload()` directly, not `unload()` | `src/loaders/cjsModuleLoader.ts:159-160` |
-| Loaded scripts tracked as `[path, module]` pairs | `src/loaders/cjsModuleLoader.ts:27`, `:136-146` |
+| Loaded scripts tracked as `[path, module]` pairs, only after `onload` succeeds (modules only if they have `onunload`) | `src/loaders/cjsModuleLoader.ts:27`, `:101-117`, `:136-146` |
 | Snippets: `Function("plugin","require", body)`, identified only by array index | `src/loaders/cjsModuleLoader.ts:43-64`, `src/settings/Settings.ts:166-199` |
 | Text inputs save on every keystroke | `src/settings/Settings.ts:181-184` |
-| Host scripts unload under a 5 s timeout | `src/main.ts:13`, `:96-113` |
+| Host scripts unload under a 5 s timeout | `src/main.ts:13`, `:97-113` |
 | A folder suggester already exists and works in popout windows | `src/settings/suggesters/FolderSuggester.ts:7-12` |
 | Plugin is not desktop-only | `manifest.json` (`isDesktopOnly: false`) |
 | No test runner or tests; CI only builds on tag | `package.json` scripts, `.github/workflows/release.yml` |
@@ -117,7 +138,8 @@ export type SettingField = FieldBase &
         | { type: "secret" }                     // no default by design
     );
 
-/** Key order = display order. Keys: /^[A-Za-z_][A-Za-z0-9_]*$/. */
+/** Key order = display order. Keys: /^[A-Za-z_][A-Za-z0-9_]*$/, excluding
+ *  `__proto__`, `constructor` and `prototype`. */
 export type SettingsSchema = Record<string, SettingField>;
 ```
 
@@ -128,7 +150,7 @@ dropdown.
 **Validation** happens in three places:
 
 - **When the schema is read.** If the schema is malformed (unknown `type`, a dropdown
-  default that is not one of its options, `min > max`, a bad key), the whole schema is
+  default that is not one of its options, `min > max`, a bad or reserved key), the whole schema is
   rejected. The host logs it with `logScriptError`, shows no gear, and loads the script
   as usual.
 - **On input.** The field's type and constraints are checked first, then `validate`.
@@ -178,7 +200,15 @@ export interface Settings {
 ```
 
 `DEFAULT_SETTINGS.scriptSettings = {}`. The constructor must copy this object, as it
-already does for the arrays (`Settings.ts:24-31`).
+already does for the arrays (`Settings.ts:24-31`). `scriptSettings` and each `values`
+map are created with `Object.create(null)` (and rebuilt that way when loaded), so a path
+or key can never reach `Object.prototype`.
+
+**Only non-default values are stored** (decision 16). On every write, a value equal to
+the field's current default is removed from `values`. Keys outside the schema
+(plugin-class "other keys") are stored as given. When a script's serialized `values`
+exceed 100 KB the host logs a console warning (decision 20); large data belongs in vault
+files, which the README will say.
 
 **Why `data.json` and not a sidecar file** (for example `foo.js.settings.json`):
 
@@ -194,17 +224,32 @@ already does for the arrays (`Settings.ts:24-31`).
 
 - The host registers `this.app.vault.on("rename", (file, oldPath) => ...)` in `main.ts`.
   The handler re-keys every path that equals `oldPath` or starts with `oldPath + "/"`,
-  which covers folder moves. It applies to three places: `enabledScripts`,
-  `scriptSettings`, and `CjsModuleLoader.modulesWithUnload`, so that toggling the
-  renamed script off still unloads it. Then it saves. This also fixes today's
-  loss of the enabled flag on rename.
-- **Delete, or the file is missing when the tab renders:** values are *kept*. The
-  existing pruning of `enabledScripts` stays as it is (`Settings.ts:154-159`). Values are
-  kept because sync clients often delete a file and recreate it, and because a deleted
-  API-key setup is costly to redo.
+  which covers folder moves. It applies to `enabledScripts`, `scriptSettings`, and the
+  loader's script registry (see [Lifecycle](#reading-values-and-change-notification)),
+  so that toggling the renamed script off still unloads it. Then it saves. This also
+  fixes today's loss of the enabled flag on rename.
+- **Renaming the scripts folder itself** also updates `scriptsFolder`, so the scripts stay
+  in the folder and nothing is lost.
+- **The path is mutable inside the host.** `ctx.path` and the plugin-class
+  `loadData`/`saveData` overrides read the path from the registry entry on each call,
+  never from a captured string, so they keep working after a rename.
+- **A loaded script moved out of the scripts folder** is unloaded and removed from
+  `enabledScripts`. Its values stay under the old path as orphans (decision 17).
+- **Collision.** If the new path already holds orphaned values, the renamed script's
+  values replace them (decision 18).
+- **Delete, or the file is missing:** values are *kept*, and an enabled path is *not*
+  pruned from `enabledScripts` (decision 13; today it is, `Settings.ts:154-159`). The
+  row is shown as "missing" with its toggle, so the user can still disable it. Loading a
+  missing path no longer raises a Notice (`cjsModuleLoader.ts:72-77`); instead the host
+  listens for vault `create` and loads an enabled script when its file appears. This
+  matters with sync: a file that has not synced yet must not disable the script on
+  every device. Values are kept because sync clients often delete a file and recreate
+  it, and because a deleted API-key setup is costly to redo.
 - A collapsed **"Settings for missing scripts"** section at the bottom of the Scripts
   list shows each orphaned path with a "Forget" button. If a rename happened while the
   host was not running, the values are orphaned. In v1 the user re-enters them.
+  A path counts as orphaned when it has values but is not enabled and has no file;
+  missing *enabled* scripts are listed in the Scripts list instead.
 
 ### Schema changes between script versions
 
@@ -222,11 +267,22 @@ already does for the arrays (`Settings.ts:24-31`).
 writes the secret itself there.
 
 - The field is rendered with Obsidian's `SecretComponent`
-  (`obsidian.d.ts`: `class SecretComponent`, since 1.11.1). The user picks an existing
+  (`obsidian.d.ts`: `class SecretComponent`, since 1.11.1; its `setValue`/`onChange`
+  since 1.11.4). The user picks an existing
   entry in `app.secretStorage` or creates one. `values[key]` stores only the secret id,
-  for example `"openai-key"`.
-- `ctx.settings.apiKey` resolves the id with `app.secretStorage.getSecret(id)` each time
-  it is read, and returns `""` if no secret is set. `ctx.set()` refuses secret keys, and
+  for example `"openai-key"`. Ids must be lowercase alphanumeric with dashes
+  (`setSecret` throws otherwise); `SecretComponent` enforces this when creating one.
+- `ctx.settings.apiKey` resolves the id with `app.secretStorage.getSecret(id)` (which is
+  synchronous) each time it is read, and returns `""` if no secret is set. Secret keys
+  are defined as **non-enumerable getters** (decision 14), on both `ctx.settings` and the
+  object `loadData()` returns. They are skipped by spreads, `Object.keys`,
+  `JSON.stringify` and `onChange` payloads, so a logged settings object never contains a
+  secret. Because each read calls `getSecret`, the value is never stale.
+- `SecretStorage` has no change event, so editing a secret in Obsidian's own settings
+  does **not** fire `onChange`. Scripts should read secrets at use time. Picking a
+  *different* secret id in the modal does fire `onChange`.
+- If the stored id has no secret on this device (for example after `data.json` synced
+  but the secret did not), the modal shows "Secret not set on this device". `ctx.set()` refuses secret keys, and
   plugin-class `saveData` ignores them. Secrets are changed only through the UI.
 - `minAppVersion` is 1.11.4 (decision 3), so the API is always present. There is no
   localStorage or plain-text fallback.
@@ -242,9 +298,10 @@ writes the secret itself there.
 ```ts
 // src/scriptSettings/ScriptContext.ts (new)
 export interface ScriptContext<V extends Record<string, unknown> = Record<string, unknown>> {
-    /** Vault path of the script. */
+    /** Current vault path of the script; follows renames. */
     readonly path: string;
-    /** Frozen snapshot: defaults ⊕ valid stored values, secrets resolved.
+    /** Frozen snapshot: defaults ⊕ valid stored values. Secret keys are
+     *  non-enumerable getters resolved on every read.
      *  The getter returns the current snapshot; a destructured copy goes stale. */
     readonly settings: Readonly<V>;
     /** Validates, persists (debounced), and notifies listeners. Rejects for
@@ -260,17 +317,41 @@ Lifecycle:
 - **When the script is evaluated**, the host captures `exports.settings` or
   `exports.default?.settings` and validates it. This happens between
   `cjsModuleLoader.ts:85` and `:100`.
-- **Before `onload`**, the host creates a context for the path and stores it next to the
-  module in the loader. Every loaded script gets one, including scripts without a schema
-  and module scripts without `onunload`, so their listeners can still be disposed.
+- **Before `onload`**, the host creates a registry entry for the path:
+  `{ path, schema, ctx, exports/instance }`. The registry is separate from
+  `modulesWithUnload`, which today records a script only after `onload` succeeds and a
+  module only if it has `onunload` (`cjsModuleLoader.ts:101-117`). Every evaluated
+  script gets an entry, including scripts without a schema, modules without
+  `onunload`, and scripts whose `onload` threw. So the gear is shown for a script that
+  failed to load because, say, its API key is missing, and its listeners are still
+  disposed on toggle-off. Toggle-off disposes the entry whether or not `onload`
+  succeeded; re-enabling creates a fresh one, never a second live one.
 - **When the user edits a value**, the host validates it, writes it to `scriptSettings`,
   and debounces the save (about 500 ms) so a keystroke does not cause a full
   `data.json` write. Text inputs save on every keystroke today (`Settings.ts:181-184`).
   It also debounces the `onChange` notification, so scripts are not called on every
-  keystroke.
+  keystroke. Closing the modal flushes the pending save immediately, because quitting
+  Obsidian may not wait for an async `onunload`.
+- **When `data.json` changes externally** (decision 10, the host's
+  `onExternalSettingsChange`):
+  1. Flush any pending debounced save first, so local edits are not lost.
+  2. Read `data.json`. If it equals the JSON the host last wrote, it is an echo of the
+     host's own write: stop.
+  3. Apply the new data **in place** to the existing settings object (replace the
+     contents of `snippets`, `enabledScripts`, `scriptSettings` and the scalar fields),
+     because the loader and the tab hold it by reference (`main.ts:37-40`,
+     `cjsModuleLoader.ts:30`, `Settings.ts:122`).
+  4. For each script whose effective values changed, fire its `onChange` (module) or
+     `onExternalSettingsChange` (plugin class).
+  5. Load newly enabled scripts and unload newly disabled ones.
+  6. Re-render the settings tab if it is open, and re-render an open
+     `ScriptSettingsModal` (decision 15).
 - **On unload** (toggle off, host unload): listeners are cleared and the context is
-  marked disposed, after which `set` rejects. Pending saves are flushed in the host's
-  `onunload` before scripts unload (`main.ts:96`).
+  marked disposed, after which `set` rejects. In the host's `onunload` (`main.ts:97`),
+  scripts unload first, under the existing 5 s timeout, so writes made in their
+  `onunload` are kept. Then pending saves are flushed and *every* context is marked
+  disposed, including those of scripts still running after the timeout, so a late
+  `set`/`saveData` rejects instead of writing after the host is gone.
 - **Values are not deleted when a script is disabled.**
 - **No automatic re-run of `onload` on change.** Re-running is unsafe: module scripts
   register on the *host* plugin, and nothing undoes those registrations except the
@@ -313,11 +394,19 @@ This is safe because `Plugin.loadData`/`saveData` are ordinary prototype methods
 
 ```ts
 loadData(): Promise<Record<string, unknown> | null>; // defaults ⊕ stored, secrets resolved; null if no schema and nothing stored
-saveData(data: Record<string, unknown>): Promise<void>; // schema keys validated, secret keys ignored, other keys stored as-is
-onExternalSettingsChange?(): void; // existing Obsidian hook, called by the host on value change
+saveData(data: Record<string, unknown>): Promise<void>; // schema keys validated, secret keys ignored, defaults dropped, other keys stored as-is
+onExternalSettingsChange?(): void; // existing Obsidian hook, called when values change from outside this instance
 ```
 
 Without a schema, `loadData`/`saveData` still give the script private storage, but no UI.
+
+`onExternalSettingsChange` is called for changes from the modal or from sync, never for
+the instance's own `saveData`. This matches Obsidian's meaning of the hook and prevents
+a loop when a script saves inside it.
+
+Because only non-default values are stored (decision 16), the common
+`saveData(this.cfg)` idiom does not freeze defaults: unchanged fields keep following the
+schema's default.
 
 ```ts
 import { Plugin } from "obsidian";
@@ -350,8 +439,11 @@ Unchanged. See [Per script type](#per-script-type).
 ## UI
 
 - **Gear button.** In `addUserScriptEntries` (`Settings.ts:126-147`), a row gets an extra
-  `settings` icon button before its toggle when the script is loaded and has a valid
-  schema. A disabled script with stored values shows a muted "Enable to configure" description instead.
+  `settings` icon button before its toggle when the script has a registry entry with a
+  valid schema (even if its `onload` threw). The toggle handler must `await
+  runJsModule(...)` before calling `display()`; today `display()` runs first and the
+  load is not awaited (`Settings.ts:139-141`), so the gear would not appear until the
+  next render. A disabled script with stored values shows a muted "Enable to configure" description instead.
 - **The button opens `ScriptSettingsModal`**, a `Modal` with the file name as title and
   one `Setting` per field, built with the stock builders (`addText`, `addTextArea`,
   `addToggle`, `addDropdown`, `addSlider`, `addSearch` with `FolderSuggester`, and
@@ -379,6 +471,11 @@ Unchanged. See [Per script type](#per-script-type).
   private storage. A script that relied on reading the host's settings would break; none
   of the examples do (`examples/`). A script that called `saveData` has been corrupting
   the host's settings and is fixed by this change. It will be called out in release notes.
+  Data such a script already wrote lives as stray top-level keys in the host's
+  `data.json`. These keys are left untouched (decision 19), and the script will not see
+  them through the new `loadData`. Release notes explain how to copy them over by hand.
+- **Missing enabled scripts are no longer pruned** (decision 13). A script whose file is
+  gone stays enabled and shows as "missing" until the user disables it.
 - **Accidental `settings` export.** If a script already exports an unrelated `settings`,
   strict validation rejects it with a console message. The script loads as before. See
   decision 7.
@@ -410,16 +507,16 @@ Rough sizes are production lines of code, excluding tests.
 
 | Stage | Content | Size |
 |---|---|---|
-| 1. Core + storage | Raise `minAppVersion` to 1.11.4. `scriptSettings` in `Settings` and the defaults copy. Pure module `src/scriptSettings/schema.ts` (schema validation, value coercion, merge with defaults, path re-keying; imports no `obsidian`). Vault `rename` handler re-keying `enabledScripts`, `scriptSettings` and `modulesWithUnload`. Debounced save with flush on unload. Test harness. | ~250 |
-| 2. Module scripts + UI | Schema capture after evaluation, `ScriptContext` (`settings`, `set`, `onChange`, dispose), `onload(plugin, ctx)`. Gear button, `ScriptSettingsModal` with the non-secret renderers, missing-scripts section. | ~400 |
-| 3. Secrets | `secret` field with `SecretComponent`/`SecretStorage`, redaction in logs. Verify SecretStorage sync behaviour. | ~120 |
-| 4. Plugin-class scripts | `loadData`/`saveData` override, schema from `exports.settings`/`static settings`, `onExternalSettingsChange` dispatch. | ~80 |
-| 4b. External changes | Host `onExternalSettingsChange`: reload settings, fire script `onChange`, load/unload scripts whose `enabledScripts` entry changed. | ~100 |
-| 5. Docs + examples | `examples/js-module-settings/`, a plugin-class example, the `.d.ts` for authors. README: tick the roadmap item, replace the warning at `README.md:15`, document the secrets threat model, the `loadData` change and the new minimum Obsidian version. | docs |
+| 1. Core + storage | Raise `minAppVersion` to 1.11.4. `scriptSettings` in `Settings` and the defaults copy. Pure module `src/scriptSettings/schema.ts` (schema validation, value coercion, merge with defaults, path re-keying; imports no `obsidian`). Vault `rename` handler re-keying `enabledScripts`, `scriptSettings`, the script registry and `scriptsFolder`; unload on move out of the folder. Stop pruning missing enabled scripts; load on vault `create`. Null-prototype maps; store only non-defaults; size warning. Debounced save with flush on modal close and after script unload. Test harness. | ~250 |
+| 2. Module scripts + UI | Schema capture after evaluation, script registry, `ScriptContext` (`settings`, `set`, `onChange`, dispose), `onload(plugin, ctx)`. Await load before `display()`. Gear button, `ScriptSettingsModal` with the non-secret renderers, missing-scripts section. | ~400 |
+| 3. Secrets | `secret` field with `SecretComponent`/`SecretStorage`, non-enumerable getters, "not set on this device", redaction in logs. Verify SecretStorage sync behaviour. | ~120 |
+| 4. Plugin-class scripts | `loadData`/`saveData` override, schema from `exports.settings`/`static settings`, `onExternalSettingsChange` dispatch (not to the saving instance). | ~80 |
+| 4b. External changes | Host `onExternalSettingsChange`: flush, echo check, in-place apply, fire script `onChange`, load/unload scripts whose `enabledScripts` entry changed, re-render tab and modal. | ~120 |
+| 5. Docs + examples | `examples/js-module-settings/`, a plugin-class example, the `.d.ts` for authors. README: tick the roadmap item, replace the warning at `README.md:15`, document the secrets threat model, the `loadData` change and legacy keys, no-pruning, large-data guidance, and the new minimum Obsidian version. | docs |
 | Later (optional) | Imperative `renderSettings(containerEl, ctx)`. | ~100 |
 
 Each of stages 1–4b can ship as its own PR. Stage 1 ships no user-visible feature apart
-from the rename fix.
+from the rename fix and the end of pruning.
 
 ## Testing approach
 
@@ -430,19 +527,29 @@ pushes (`.github/workflows/release.yml`).
 - **Unit tests (stage 1).** Keep schema validation, coercion, merging and re-keying in
   modules that import nothing from `obsidian`. Test them with Node's built-in `node:test`
   runner. The test files are bundled with the `esbuild` already in `devDependencies` and
-  run as `npm test` (`esbuild test/*.test.ts --bundle --platform=node --outdir=build-test && node --test build-test`).
-  This needs no new dependencies. `vitest` is the alternative if a dev dependency is
+  run as `npm test` (`esbuild test/*.test.ts --bundle --platform=node --outdir=build-test && node --test build-test/*.test.js`).
+  This needs no new dependencies. CI pins the Node version (`actions/setup-node`), and a
+  `tsconfig.test.json` that includes `test/` is type-checked with `tsc --noEmit`, since
+  `test/` is outside the main `tsconfig` include. `vitest` is the alternative if a dev dependency is
   acceptable. Add `npm test` to a PR workflow, which is new and gated on approval.
 - **Cases to cover:**
   - malformed schemas of each kind
   - defaults per type
   - an invalid stored value falling back to the default without being overwritten
   - unknown keys preserved
-  - file and folder renames re-keying all three maps
-  - delete keeping values
-  - secret keys never appearing in the serialized `Settings`
+  - file and folder renames re-keying `enabledScripts`, `scriptSettings` and the registry
+  - renaming the scripts folder updating `scriptsFolder`
+  - a rename onto a path with orphaned values (renamed script wins)
+  - delete keeping values; a missing enabled path not being pruned
+  - reserved keys (`__proto__`, `constructor`) rejected
+  - only non-default values stored; a changed default taking effect
+  - secret keys never appearing in the serialized `Settings`, spreads or `JSON.stringify(ctx.settings)`
   - `ctx.set` rejecting secrets and invalid values
-  - listener disposal on unload
+  - listener disposal on unload, including after a failed `onload`
+  - external reload applied in place (object identity kept) and echo writes ignored
+  - a pending debounced save flushed before an external reload
+  - `set` rejecting after host unload
+  - plugin-class `saveData` inside `onExternalSettingsChange` not recursing
 - **Manual checklist** (in the PR description for stages 2–4), using the new examples on
   desktop and on mobile (Android or iOS):
   - edit each field type
