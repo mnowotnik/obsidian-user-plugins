@@ -479,7 +479,7 @@ to `obsidian-user-plugins:hello` keeps working.
 
 | Stage | Content | Size |
 |---|---|---|
-| 0 | Spike in a test vault, no merge: confirm `Plugin.addCommand`/`addRibbonIcon`/`addStatusBarItem`/`registerEditorExtension`/`registerView` cleanups run on `unload()` of a second `Plugin` with the host manifest; that double removal is a no-op; `load()`/`unload()` with shadowed `onload`/`onunload`; what happens to open leaves of an unregistered view | half a day |
+| 0 | Spike in a test vault, no merge: run the [Stage 0 checklist](#stage-0-checklist) | half a day |
 | 1 | vitest setup with an `obsidian` stub; `ScriptScope`, `scopedPlugin` Proxy, `LoadedScript` map, per-key serialization, module scripts load/unload with timeout, teardown on `onload` failure and on missing files, `forceUnloadAll` in `main.ts` | ~250 LOC |
 | 2 | Plugin-class scripts via `load()`/`unload()` | ~60 LOC |
 | 3 | Snippet scopes; "Run snippet" reloads; delete tears down | ~60 LOC |
@@ -488,6 +488,78 @@ to `obsidian-user-plugins:hello` keeps working.
 | 6 | README section on cleanup and `register(cb)`; update examples | docs |
 
 Each stage is shippable on its own; 1 is the prerequisite for the rest.
+
+### Stage 0 checklist
+
+Things the design relies on that the typings cannot confirm. Each is checked
+in a test vault on Obsidian 1.7.2 (the `minAppVersion`) and the current
+release, using a throwaway build that constructs a second `Plugin` with the
+host manifest (a "scope"), registers through it, and calls `unload()`.
+
+**1. `unload()` of a second `Plugin` removes its registrations.** For each,
+register, call `scope.unload()`, confirm it is gone:
+
+- [ ] `addCommand`: gone from the command palette and the User Plugins palette
+- [ ] `addRibbonIcon`, `addStatusBarItem`: elements removed from the DOM
+- [ ] `registerEvent`, `registerDomEvent`, `registerInterval`: stop firing
+- [ ] `registerMarkdownPostProcessor`, `registerMarkdownCodeBlockProcessor`:
+  not applied on the next render
+- [ ] `registerEditorExtension`: already-open editors drop it, not only new ones
+- [ ] `registerView`, `registerExtensions`: view type and file extension unregistered
+- [ ] `addSettingTab`: tab removed from the settings modal; also whether a
+  scope's tab shows up as a second "User Plugins" entry (shared manifest)
+- [ ] `registerObsidianProtocolHandler`, `registerEditorSuggest`,
+  `registerHoverLinkSource`, `registerBasesView`: unregistered
+
+**2. Double removal is a no-op.**
+
+- [ ] Author removes a command, event or element in `onunload`, then
+  `scope.unload()` runs: no throw, no console errors
+- [ ] `removeCommand` on a scope works on 1.7.2
+
+**3. Command IDs and hotkeys.**
+
+- [ ] A scope's command ID is `obsidian-user-plugins:<id>`, same as today
+- [ ] A hotkey bound to it still works after unload + load
+- [ ] Two scopes registering the same ID: the later replaces the earlier;
+  record what unloading the first scope does to the second's command
+  (expected: removes it, which is why Q1 warns)
+
+**4. Plugin-class scripts through `load()`/`unload()`.**
+
+- [ ] `Component.load()` calls an instance-own `onload` (the shim), not only
+  the prototype method
+- [ ] Whether `load()` awaits an async `onload` (the design assumes not and
+  awaits the shim's result itself)
+- [ ] Classes defining `onload`/`onunload` as class fields (instance-own):
+  save/restore of the own property keeps them working
+- [ ] `addChild` on an already-loaded scope loads the child immediately
+- [ ] After `unload()`, the author's `onunload` is not called a second time
+
+**5. Open views of an unregistered type.**
+
+- [ ] What happens to open leaves when their view type is unregistered
+  (closed, emptied, or error)
+- [ ] Whether they recover when the script loads again and re-registers
+
+**6. The `Proxy` given to scripts.**
+
+- [ ] `plugin instanceof Plugin` and `instanceof UserPlugins` hold
+- [ ] Nothing Obsidian calls on the plugin object breaks when it is a Proxy
+- [ ] Host methods that register (e.g. `setRibbonIcon`, `src/main.ts:84-95`)
+  still register on the host, not on the scope
+
+**7. Host shutdown.**
+
+- [ ] Disabling User Plugins with a plugin-class script loaded removes that
+  script's commands (they leak today)
+
+**If something fails.** For a failing registration type in 1, 2 or 5, fall
+back to removal through an internal API or leave it host-lifetime, and
+record which in this document. If 1 fails broadly, the `ScriptScope`
+mechanism needs rethinking before Stage 1. A failure in 4 only affects
+Stage 2 (keep calling `onload`/`onunload` directly and unload the instance
+afterwards).
 
 ### Testing
 
