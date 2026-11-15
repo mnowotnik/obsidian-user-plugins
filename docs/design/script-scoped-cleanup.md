@@ -1,28 +1,26 @@
 # Design: script-scoped cleanup
 
-Status: proposal, for review. No code changes accompany this document.
+Status: proposal; open questions resolved, mechanism pending Stage 0. No code changes accompany this document.
 Line numbers in `obsidian.d.ts` refer to `obsidian@1.11.4`, the version in `package-lock.json`.
 
-## Decisions needed from the owner
+## Decisions
 
-1. **Approve the mechanism**: every module script and snippet gets its own
-   `ScriptScope` (a real `Plugin` instance constructed with the host's
-   manifest), exposed to the script through a `Proxy` over the host that
-   routes registration methods to the scope and everything else to the host.
-   Plugin-class scripts are driven through `load()`/`unload()` and are their
-   own scope. Disabling a script runs the author's `onunload`, then
-   `scope.unload()`.
-2. **Command IDs stay exactly as today** (`obsidian-user-plugins:<id>`), so
-   hotkeys keep working. No per-script prefix. Policy for two scripts using
-   the same ID: **warn and let the later one win** (today's behaviour) or
-   refuse? (Q1)
-3. **CSS imported by a script is removed when that script is disabled**
-   (reference-counted across scripts). This is a visible behaviour change. (Q2)
-4. Plugin-class scripts currently read and write the **host's** `data.json`
-   through `loadData`/`saveData`. Fix in this work or separately? (Q3)
-5. Whether to add a unit-test runner (the repo has none). (Q5)
+Resolved by the owner on 2026-11-15:
 
-The full list is under [Open questions](#open-questions).
+- **Duplicate command IDs across scripts**: warn (console + Notice) and let
+  the later registration win, as today. (Q1)
+- **Imported CSS** is removed when the last script that imported it is
+  disabled (reference-counted). Needs a release note. (Q2)
+- **Plugin-class `loadData`/`saveData`** sharing the host's `data.json`: out
+  of scope for this work; known issue to be handled separately. (Q3)
+- **No `plugin.host` escape hatch**: `app.plugins.getPlugin(...)` is the
+  documented way to register for the host's lifetime. (Q4)
+- **Add a unit-test runner** (vitest with a hand-written `obsidian` stub). (Q5)
+- **Snippets stay identified by index**; no settings migration. (Q6)
+
+Still to approve: the overall mechanism (per-script `ScriptScope` exposed
+through a `Proxy` over the host; plugin-class scripts driven through
+`load()`/`unload()`; command IDs unchanged). Stage 0 validates it.
 
 ## Recommended design (summary)
 
@@ -129,8 +127,8 @@ Corrections to the problem statement:
   namespace, `obsidian-user-plugins:`, which `CommandPalette.ts:23-32` relies on.
 - Because the manifest is the host's, a plugin-class script's
   `loadData`/`saveData` (`obsidian.d.ts:4697,4705`) target the host's
-  `data.json` and can overwrite User Plugins' settings. Not in scope, but
-  see Q3.
+  `data.json` and can overwrite User Plugins' settings. Out of scope for
+  this work (Q3).
 
 ## Proposed mechanism
 
@@ -465,29 +463,24 @@ to `obsidian-user-plugins:hello` keeps working.
   but tears scopes down before authors' async `onunload` runs (see above).
   Rejected in favour of `forceUnloadAll()` in `main.ts`.
 
-## Open questions
+## Resolved questions
 
-1. Duplicate command ID across scripts: warn and let the later one win, or
-   refuse the second registration?
-2. Remove a script's imported CSS when it is disabled (recommended), or keep
-   CSS host-lifetime as today?
-3. Plugin-class scripts share the host's `data.json` via `loadData`/`saveData`
-   and could clobber its settings. Fix here (route them to a per-script file)
-   or track separately? Changing their manifest is not an option (it would
+1. Duplicate command ID across scripts: **warn and let the later one win.**
+2. Imported CSS: **removed when the last owning script is disabled.**
+3. Plugin-class scripts sharing the host's `data.json`: **out of scope**;
+   tracked separately (changing their manifest is not an option, it would
    change command IDs).
-4. Offer an explicit escape hatch (e.g. `plugin.host`) for deliberate
-   host-lifetime registrations, or is `getPlugin(...)` enough?
-5. Add a unit-test runner (e.g. vitest with a hand-written `obsidian` stub),
-   or rely on the manual checklist?
-6. Snippets are identified by array index. Acceptable, or give snippets stable
-   IDs (a settings migration)?
+4. Escape hatch for host-lifetime registrations: **none**; `getPlugin(...)`
+   is enough.
+5. Unit-test runner: **add vitest** with a hand-written `obsidian` stub.
+6. Snippet identity: **keep array index**; no migration.
 
 ## Implementation plan
 
 | Stage | Content | Size |
 |---|---|---|
 | 0 | Spike in a test vault, no merge: confirm `Plugin.addCommand`/`addRibbonIcon`/`addStatusBarItem`/`registerEditorExtension`/`registerView` cleanups run on `unload()` of a second `Plugin` with the host manifest; that double removal is a no-op; `load()`/`unload()` with shadowed `onload`/`onunload`; what happens to open leaves of an unregistered view | half a day |
-| 1 | `ScriptScope`, `scopedPlugin` Proxy, `LoadedScript` map, per-key serialization, module scripts load/unload with timeout, teardown on `onload` failure and on missing files, `forceUnloadAll` in `main.ts` | ~250 LOC |
+| 1 | vitest setup with an `obsidian` stub; `ScriptScope`, `scopedPlugin` Proxy, `LoadedScript` map, per-key serialization, module scripts load/unload with timeout, teardown on `onload` failure and on missing files, `forceUnloadAll` in `main.ts` | ~250 LOC |
 | 2 | Plugin-class scripts via `load()`/`unload()` | ~60 LOC |
 | 3 | Snippet scopes; "Run snippet" reloads; delete tears down | ~60 LOC |
 | 4 | Scoped `import` with CSS refcount | ~50 LOC |
@@ -511,6 +504,6 @@ push (`.github/workflows/release.yml`). So:
   (teardown still happens after 5 s); `onload` that throws halfway (partial
   registrations removed); two scripts importing the same CSS; disable User
   Plugins itself with a plugin-class script loaded (its command is gone).
-- If Q5 is approved: unit tests for the Proxy routing, CSS refcount and
+- Unit tests (vitest, approved) for the Proxy routing, CSS refcount and
   per-key serialization against a small `obsidian` stub, which need no
   running Obsidian.
