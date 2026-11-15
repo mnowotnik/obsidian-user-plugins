@@ -13,6 +13,21 @@ jobs:
         runs-on: ubuntu-latest
         steps:
             - uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+            - name: Check tag
+              # Tags aren't tied to a branch, so check that this one is a
+              # proper release tag: it matches manifest.json and is on develop.
+              run: |
+                  version=$(node -p "require('./manifest.json').version")
+                  if [ "$GITHUB_REF_NAME" != "$version" ]; then
+                      echo "::error::Tag $GITHUB_REF_NAME does not match manifest.json version $version"
+                      exit 1
+                  fi
+                  if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/develop; then
+                      echo "::error::Tagged commit $GITHUB_SHA is not on develop"
+                      exit 1
+                  fi
             - uses: actions/setup-node@v4
               with:
                   node-version: 20
