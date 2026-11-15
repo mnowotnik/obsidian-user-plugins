@@ -17,17 +17,34 @@ jobs:
                   fetch-depth: 0
             - name: Check tag
               # Tags aren't tied to a branch, so check that this one is a
-              # proper release tag: it matches manifest.json and is on develop.
+              # proper release tag. Every tag must point at a commit on develop.
+              # A release tag (X.Y.Z) must equal the manifest.json version.
+              # A dev build tag (X.Y.Z-rc.N or any X.Y.Z-suffix) may be ahead
+              # of manifest.json; the version is written in the next step.
               run: |
+                  tag="$GITHUB_REF_NAME"
                   version=$(node -p "require('./manifest.json').version")
-                  if [ "$GITHUB_REF_NAME" != "$version" ]; then
-                      echo "::error::Tag $GITHUB_REF_NAME does not match manifest.json version $version"
+                  if [[ "$tag" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
+                      echo "Dev build $tag"
+                  elif [ "$tag" != "$version" ]; then
+                      echo "::error::Tag $tag does not match manifest.json version $version"
                       exit 1
                   fi
                   if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/develop; then
                       echo "::error::Tagged commit $GITHUB_SHA is not on develop"
                       exit 1
                   fi
+            - name: Set dev build version
+              # BRAT reads the version from the released manifest.json, so it
+              # must match the tag. The repo's manifest.json is not changed.
+              if: contains(github.ref_name, '-')
+              run: |
+                  node -e '
+                  const fs = require("fs");
+                  const m = JSON.parse(fs.readFileSync("manifest.json", "utf8"));
+                  m.version = process.env.GITHUB_REF_NAME;
+                  fs.writeFileSync("manifest.json", JSON.stringify(m, null, "\t") + "\n");
+                  '
             - uses: actions/setup-node@v4
               with:
                   node-version: 20
@@ -41,4 +58,7 @@ jobs:
               uses: ncipollo/release-action@v1
               with:
                   artifacts: "main.js,manifest.json,styles.css"
+                  # Dev builds are pre-releases, so GitHub doesn't show them as
+                  # "Latest". Obsidian ignores them either way.
+                  prerelease: ${{ contains(github.ref_name, '-') }}
                   token: ${{ secrets.GITHUB_TOKEN }}

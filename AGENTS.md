@@ -20,3 +20,5 @@ reach users when the release is merged into `master`.
 Read the matching file before you do any of these tasks:
 
 - Releasing a new version: [.agents/release.md](.agents/release.md)
+- Making a dev build (pre-release for developers, installed with BRAT):
+  [.agents/dev-build.md](.agents/dev-build.md)
